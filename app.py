@@ -8,27 +8,25 @@ from datetime import datetime
 # ================== 页面配置 ==================
 st.set_page_config(page_title="TechLife Suite", layout="wide")
 
-# ================== 自定义 CSS：语言按钮样式（红底白字，固定宽度） ==================
+# ================== 自定义 CSS：语言按钮红底白字且等宽 ==================
 st.markdown("""
 <style>
-/* 针对右上角两个语言按钮（中文和English）设置相同宽度 */
-div[data-testid="column"]:nth-of-type(2) button,
-div[data-testid="column"]:nth-of-type(3) button {
+/* 针对 key="zh_btn" 和 key="en_btn" 的按钮设置相同宽度和红底白字 */
+button[kind="primary"][key="zh_btn"],
+button[kind="primary"][key="en_btn"] {
     background-color: #ff4b4b !important;
     color: white !important;
     border: none !important;
     border-radius: 8px !important;
-    width: 100px !important;          /* 固定宽度，使两个按钮一样宽 */
+    width: 100px !important;
     padding: 0.25rem 0 !important;
     font-weight: bold !important;
     text-align: center !important;
 }
-/* 悬停效果 */
-div[data-testid="column"]:nth-of-type(2) button:hover,
-div[data-testid="column"]:nth-of-type(3) button:hover {
+button[kind="primary"][key="zh_btn"]:hover,
+button[kind="primary"][key="en_btn"]:hover {
     background-color: #e03a3a !important;
 }
-/* 齿轮按钮保持原样，不受影响 */
 </style>
 """, unsafe_allow_html=True)
 
@@ -136,11 +134,11 @@ def t(key):
 # ================== 顶部栏：语言切换 + 齿轮 ==================
 top_col1, top_col2, top_col3, top_col4 = st.columns([6, 1, 1, 1])
 with top_col2:
-    if st.button("中文", key="zh_btn"):
+    if st.button("中文", key="zh_btn", type="primary"):
         st.session_state.language = "zh"
         st.rerun()
 with top_col3:
-    if st.button("English", key="en_btn"):
+    if st.button("English", key="en_btn", type="primary"):
         st.session_state.language = "en"
         st.rerun()
 with top_col4:
@@ -247,7 +245,6 @@ def admin_dashboard():
         else:
             user_data = []
             for user in users:
-                # 修复 datetime 切片错误
                 created_at_str = ""
                 if user.created_at:
                     if isinstance(user.created_at, datetime):
