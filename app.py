@@ -2,6 +2,7 @@ import streamlit as st
 from st_supabase_connection import SupabaseConnection
 import jwt
 import time
+import pandas as pd
 
 # ================== 页面配置 ==================
 st.set_page_config(page_title="TechLife Suite", layout="wide")
@@ -10,14 +11,22 @@ st.set_page_config(page_title="TechLife Suite", layout="wide")
 conn = st.connection("supabase", type=SupabaseConnection)
 supabase = conn.client
 
-# ================== 语言配置 ==================
-# 支持的语言
-LANGUAGES = {
-    "zh": "中文",
-    "en": "English"
-}
+# 为了获取用户列表，需要 service_role key（具有管理员权限）
+# 请在 secrets 中配置 SUPABASE_SERVICE_ROLE_KEY
+try:
+    service_role_key = st.secrets["connections"]["supabase"]["SUPABASE_SERVICE_ROLE_KEY"]
+    # 创建一个具有 admin 权限的客户端
+    from supabase import create_client
+    supabase_admin = create_client(
+        st.secrets["connections"]["supabase"]["SUPABASE_URL"],
+        service_role_key
+    )
+except:
+    supabase_admin = None
+    st.warning("未配置 SUPABASE_SERVICE_ROLE_KEY，管理员功能受限")
 
-# 所有文本字典
+# ================== 语言配置 ==================
+LANGUAGES = {"zh": "中文", "en": "English"}
 TEXTS = {
     "zh": {
         "app_title": "TechLife Suite",
@@ -41,16 +50,16 @@ TEXTS = {
         "dfmea": "⚙️ DFMEA 分析",
         "tolerance": "📏 公差分析",
         "use_now": "立即使用",
-        "admin_panel": "🛠️ 管理面板",
-        "admin_welcome": "欢迎，管理员！",
-        "user_list": "用户列表",
-        "no_users": "暂无用户",
+        "admin_panel": "🛠️ 管理后台",
+        "admin_title": "管理员控制台",
+        "user_list": "注册用户列表",
         "email_col": "邮箱",
         "created_at_col": "注册时间",
         "subscription_col": "订阅状态",
         "update_subscription": "更新订阅",
         "back_to_portal": "← 返回门户",
-        "unauthorized": "您没有管理员权限。",
+        "no_users": "暂无用户",
+        "load_error": "加载用户列表失败",
     },
     "en": {
         "app_title": "TechLife Suite",
@@ -75,50 +84,52 @@ TEXTS = {
         "tolerance": "📏 Tolerance Analysis",
         "use_now": "Use Now",
         "admin_panel": "🛠️ Admin Panel",
-        "admin_welcome": "Welcome, Admin!",
-        "user_list": "User List",
-        "no_users": "No users found",
+        "admin_title": "Admin Console",
+        "user_list": "Registered Users",
         "email_col": "Email",
-        "created_at_col": "Registered At",
-        "subscription_col": "Subscription Status",
-        "update_subscription": "Update Subscription",
+        "created_at_col": "Signed Up",
+        "subscription_col": "Subscription",
+        "update_subscription": "Update",
         "back_to_portal": "← Back to Portal",
-        "unauthorized": "You are not authorized as admin.",
+        "no_users": "No users found",
+        "load_error": "Failed to load users",
     }
 }
 
-# 获取当前语言
 if "language" not in st.session_state:
-    st.session_state.language = "zh"  # 默认中文
+    st.session_state.language = "zh"
 
 def t(key):
-    """翻译函数"""
     return TEXTS[st.session_state.language].get(key, key)
 
-# ================== 语言切换按钮（右上角） ==================
-col_lang1, col_lang2, col_lang3 = st.columns([8, 1, 1])
-with col_lang2:
+# ================== 语言切换和齿轮（管理员） ==================
+# 创建顶部栏：左侧留空，右侧放置语言按钮和齿轮
+top_col1, top_col2, top_col3, top_col4 = st.columns([6, 1, 1, 1])
+with top_col2:
     if st.button("中文", key="zh_btn"):
         st.session_state.language = "zh"
         st.rerun()
-with col_lang3:
+with top_col3:
     if st.button("English", key="en_btn"):
         st.session_state.language = "en"
         st.rerun()
+with top_col4:
+    # 齿轮图标仅管理员可见（登录后且 is_admin 为 True）
+    if st.session_state.get("authenticated", False) and st.session_state.get("is_admin", False):
+        if st.button("⚙️", key="admin_gear"):
+            st.session_state.show_admin = not st.session_state.get("show_admin", False)
+            st.rerun()
 
-# ================== JWT 配置（用于单点登录） ==================
+# ================== JWT 配置 ==================
 JWT_SECRET = st.secrets.get("JWT_SECRET_KEY", "fallback-secret-key-change-me")
-TOKEN_EXPIRY_SECONDS = 3600  # 1小时
+TOKEN_EXPIRY_SECONDS = 3600
 
 def generate_token(email):
-    payload = {
-        "email": email,
-        "exp": time.time() + TOKEN_EXPIRY_SECONDS
-    }
+    payload = {"email": email, "exp": time.time() + TOKEN_EXPIRY_SECONDS}
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
 # ================== 管理员邮箱列表 ==================
-ADMIN_EMAILS = ["admin@techlife.com", "techlife2027@gmail.com"]  # 请修改为你的管理员邮箱
+ADMIN_EMAILS = ["Techlife2027@gmail.com"]  # 替换为你的管理员邮箱
 
 # ================== 初始化 session_state ==================
 if "authenticated" not in st.session_state:
@@ -126,14 +137,15 @@ if "authenticated" not in st.session_state:
     st.session_state.user_email = None
     st.session_state.is_admin = False
     st.session_state.token = None
+    st.session_state.show_admin = False  # 是否显示管理后台
 
-# ================== 登出函数 ==================
 def logout():
     supabase.auth.sign_out()
     st.session_state.authenticated = False
     st.session_state.user_email = None
     st.session_state.is_admin = False
     st.session_state.token = None
+    st.session_state.show_admin = False
     st.rerun()
 
 # ================== 登录/注册表单 ==================
@@ -143,7 +155,6 @@ def auth_form():
         password = st.text_input(t("password"), type="password")
         mode = st.radio(t("mode"), [t("login"), t("register")], horizontal=True)
         submitted = st.form_submit_button(t("submit"))
-
         if submitted:
             try:
                 if mode == t("login"):
@@ -151,13 +162,12 @@ def auth_form():
                     if resp.user:
                         st.session_state.authenticated = True
                         st.session_state.user_email = email
-                        # 检查是否为管理员
                         st.session_state.is_admin = email in ADMIN_EMAILS
                         st.success(t("login_success"))
                         st.rerun()
                     else:
                         st.error(t("login_fail"))
-                else:  # 注册
+                else:
                     resp = supabase.auth.sign_up({"email": email, "password": password})
                     if resp.user:
                         st.success(t("register_success"))
@@ -166,24 +176,35 @@ def auth_form():
             except Exception as e:
                 st.error(t("auth_error").format(str(e)))
 
-# ================== 管理面板（仅管理员可见） ==================
-def admin_panel():
-    st.subheader(t("admin_panel"))
-    st.write(t("admin_welcome"))
-    
-    # 示例：从 Supabase 的 Auth 用户列表获取所有用户（需要 admin 权限，这里简化：直接查询自定义表 user_authentication）
-    # 注意：Supabase 的 admin 列表需要 service_role key，为了安全，我们使用之前创建的 user_authentication 表
+# ================== 管理后台：显示所有用户 ==================
+def admin_dashboard():
+    st.subheader(t("admin_title"))
+    if supabase_admin is None:
+        st.error("管理功能未启用：缺少 SUPABASE_SERVICE_ROLE_KEY")
+        return
     try:
-        # 使用 service_role 需要额外配置，这里演示从 user_authentication 表读取
-        # 实际上，由于我们只用了 Supabase Auth，用户数据在 auth.users 表中，但直接查询需要 service_role 密钥。
-        # 简单起见，我们假设已经创建了 user_authentication 表并同步了用户。
-        # 如果没有该表，可以提示。
-        with st.expander(t("user_list")):
-            # 这里需要 Supabase 的 admin 权限，我们暂时显示一个占位
-            st.info("管理员功能：可在此查看所有用户、修改订阅状态等。需要额外配置 Supabase 的 service_role key。")
-            # 实际实现可调用 supabase 的 admin API，但为了安全，建议在云函数中处理。
+        # 获取所有用户
+        users = supabase_admin.auth.admin.list_users()
+        if not users:
+            st.info(t("no_users"))
+            return
+        user_data = []
+        for user in users:
+            user_data.append({
+                t("email_col"): user.email,
+                t("created_at_col"): user.created_at[:19] if user.created_at else "",
+                t("subscription_col"): "待扩展"  # 你可以从自定义表读取订阅状态
+            })
+        df = pd.DataFrame(user_data)
+        st.dataframe(df, use_container_width=True)
+        st.markdown("---")
+        st.caption("提示：用户订阅管理功能可后续集成 Stripe webhook 实现")
     except Exception as e:
-        st.error(f"加载用户列表失败: {e}")
+        st.error(f"{t('load_error')}: {e}")
+    
+    if st.button(t("back_to_portal")):
+        st.session_state.show_admin = False
+        st.rerun()
 
 # ================== 主界面 ==================
 if not st.session_state.authenticated:
@@ -196,36 +217,31 @@ else:
     if st.sidebar.button(t("logout")):
         logout()
     
-    # 生成单点登录 token（用于跳转工具时传递身份）
+    # 生成 token
     if st.session_state.token is None:
         st.session_state.token = generate_token(st.session_state.user_email)
     token = st.session_state.token
     
-    # 工具链接（附加 token）
-    product_url = f"https://product.techlife-suite.com?token={token}"
-    dfmea_url = f"https://para-vary.techlife-suite.com?token={token}"
-    tolerance_url = f"https://stack-tolerance.techlife-suite.com?token={token}"
+    # ========== 工具链接（请修改为你的实际子域名） ==========
+    # 注意：这些子域名必须已经在 Cloudflare 配置了重定向规则，指向对应的 Streamlit App
+    product_url = f"https://product.techlife-suite.com?token={token}"      # 产品可行性
+    dfmea_url = f"https://para-vary.techlife-suite.com?token={token}"      # DFMEA
+    tolerance_url = f"https://stack-tolerance.techlife-suite.com?token={token}"  # 公差分析
     
-    # 主区域
-    st.title(t("app_title"))
-    st.markdown(t("choose_tool"))
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown(f"### {t('product_feasibility')}")
-        st.link_button(t("use_now"), product_url)
-    with col2:
-        st.markdown(f"### {t('dfmea')}")
-        st.link_button(t("use_now"), dfmea_url)
-    with col3:
-        st.markdown(f"### {t('tolerance')}")
-        st.link_button(t("use_now"), tolerance_url)
-    
-    # 如果用户是管理员，显示管理面板（可选，放在折叠区域或独立页面）
-    if st.session_state.is_admin:
-        st.divider()
-        with st.expander(t("admin_panel")):
-            admin_panel()
+    # 判断是否显示管理后台
+    if st.session_state.get("show_admin", False) and st.session_state.is_admin:
+        admin_dashboard()
     else:
-        # 普通用户可以有一个返回门户的按钮（其实已经在门户了）
-        pass
+        # 普通用户界面（或管理员但未进入后台）
+        st.title(t("app_title"))
+        st.markdown(t("choose_tool"))
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(f"### {t('product_feasibility')}")
+            st.link_button(t("use_now"), product_url)
+        with col2:
+            st.markdown(f"### {t('dfmea')}")
+            st.link_button(t("use_now"), dfmea_url)
+        with col3:
+            st.markdown(f"### {t('tolerance')}")
+            st.link_button(t("use_now"), tolerance_url)
