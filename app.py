@@ -11,7 +11,7 @@ st.set_page_config(page_title="TechLife Suite", layout="wide")
 # ================== 自定义 CSS：语言按钮红底白字且等宽 ==================
 st.markdown("""
 <style>
-/* 针对 key="zh_btn" 和 key="en_btn" 的按钮设置相同宽度和红底白字 */
+/* 强制两个语言按钮宽度一致，并居中 */
 button[kind="primary"][key="zh_btn"],
 button[kind="primary"][key="en_btn"] {
     background-color: #ff4b4b !important;
@@ -19,13 +19,20 @@ button[kind="primary"][key="en_btn"] {
     border: none !important;
     border-radius: 8px !important;
     width: 100px !important;
+    min-width: 100px !important;
     padding: 0.25rem 0 !important;
     font-weight: bold !important;
     text-align: center !important;
+    display: inline-block !important;
 }
 button[kind="primary"][key="zh_btn"]:hover,
 button[kind="primary"][key="en_btn"]:hover {
     background-color: #e03a3a !important;
+}
+/* 确保按钮所在的列不会压缩按钮宽度 */
+div[data-testid="column"]:nth-of-type(2),
+div[data-testid="column"]:nth-of-type(3) {
+    text-align: center !important;
 }
 </style>
 """, unsafe_allow_html=True)
