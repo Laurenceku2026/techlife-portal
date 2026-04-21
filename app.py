@@ -8,6 +8,30 @@ from datetime import datetime
 # ================== 页面配置 ==================
 st.set_page_config(page_title="TechLife Suite", layout="wide")
 
+# ================== 自定义 CSS：语言按钮样式（红底白字，固定宽度） ==================
+st.markdown("""
+<style>
+/* 针对右上角两个语言按钮（中文和English）设置相同宽度 */
+div[data-testid="column"]:nth-of-type(2) button,
+div[data-testid="column"]:nth-of-type(3) button {
+    background-color: #ff4b4b !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    width: 100px !important;          /* 固定宽度，使两个按钮一样宽 */
+    padding: 0.25rem 0 !important;
+    font-weight: bold !important;
+    text-align: center !important;
+}
+/* 悬停效果 */
+div[data-testid="column"]:nth-of-type(2) button:hover,
+div[data-testid="column"]:nth-of-type(3) button:hover {
+    background-color: #e03a3a !important;
+}
+/* 齿轮按钮保持原样，不受影响 */
+</style>
+""", unsafe_allow_html=True)
+
 # ================== 初始化 Supabase 连接 ==================
 conn = st.connection("supabase", type=SupabaseConnection)
 supabase = conn.client
@@ -22,7 +46,6 @@ try:
     )
 except:
     supabase_admin = None
-    # 不立即警告，因为管理员可能未登录
 
 # ================== 语言配置 ==================
 TEXTS = {
@@ -110,7 +133,7 @@ if "language" not in st.session_state:
 def t(key):
     return TEXTS[st.session_state.language].get(key, key)
 
-# ================== 语言切换和齿轮 ==================
+# ================== 顶部栏：语言切换 + 齿轮 ==================
 top_col1, top_col2, top_col3, top_col4 = st.columns([6, 1, 1, 1])
 with top_col2:
     if st.button("中文", key="zh_btn"):
@@ -121,11 +144,8 @@ with top_col3:
         st.session_state.language = "en"
         st.rerun()
 with top_col4:
-    # 齿轮始终显示，点击后显示管理员登录表单或管理后台
     if st.button("⚙️", key="gear_btn", help=t("gear_tooltip")):
-        # 切换管理员面板显示状态
         st.session_state.show_admin = not st.session_state.get("show_admin", False)
-        # 如果关闭面板，同时清除管理员登录状态
         if not st.session_state.show_admin:
             st.session_state.admin_authenticated = False
             st.session_state.admin_email = None
@@ -139,8 +159,8 @@ def generate_token(email):
     payload = {"email": email, "exp": time.time() + TOKEN_EXPIRY_SECONDS}
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
-# ================== 管理员列表（用于验证） ==================
-ADMIN_EMAILS = ["Techlife2027@gmail.com"]  # 请替换为实际的管理员邮箱
+# ================== 管理员邮箱列表 ==================
+ADMIN_EMAILS = ["Techlife2027@gmail.com"]   # 请替换为实际管理员邮箱
 
 # ================== 初始化 session_state ==================
 if "authenticated" not in st.session_state:
@@ -200,7 +220,6 @@ def admin_login_form():
         password = st.text_input(t("password"), type="password")
         submitted = st.form_submit_button(t("login"))
         if submitted:
-            # 验证管理员邮箱和密码
             try:
                 resp = supabase.auth.sign_in_with_password({"email": email, "password": password})
                 if resp.user and email in ADMIN_EMAILS:
@@ -250,7 +269,7 @@ def admin_dashboard():
     if st.button(t("admin_logout")):
         admin_logout()
 
-# ================== 主界面 ==================
+# ================== 主界面逻辑 ==================
 # 优先处理管理员面板（如果 show_admin 为 True）
 if st.session_state.get("show_admin", False):
     if not st.session_state.get("admin_authenticated", False):
