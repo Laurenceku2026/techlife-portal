@@ -295,9 +295,10 @@ else:
         token = st.session_state.token
         
         # 工具链接（请修改为你的实际子域名）
-        product_url = f"https://product.techlife-suite.com?token={token}"
-        dfmea_url = f"https://para-vary.techlife-suite.com?token={token}"
-        tolerance_url = f"https://stack-tolerance.techlife-suite.com?token={token}"
+        lang = st.session_state.language   # 'zh' 或 'en'
+        product_url = f"https://appuct-feasibility-analysis.streamlit.app/?token={token}&lang={lang}"
+        dfmea_url = f"https://ai-design-dfmea.streamlit.app/?token={token}&lang={lang}"
+        tolerance_url = f"https://dfss-stack-tolerance-analysis.streamlit.app/?token={token}&lang={lang}"
         
         st.title(t("app_title"))
         st.markdown(t("choose_tool"))
