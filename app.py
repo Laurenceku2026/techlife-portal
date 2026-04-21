@@ -8,12 +8,11 @@ from datetime import datetime
 # ================== 页面配置 ==================
 st.set_page_config(page_title="TechLife Suite", layout="wide")
 
-# ================== 自定义 CSS：语言按钮红底白字且等宽 ==================
+# ================== 自定义 CSS：通过 id 选择器精确控制中英文按钮 ==================
 st.markdown("""
 <style>
-/* 强制两个语言按钮宽度一致，并居中 */
-button[kind="primary"][key="zh_btn"],
-button[kind="primary"][key="en_btn"] {
+/* 直接通过 id 选择器，最可靠 */
+#zh_btn, #en_btn {
     background-color: #ff4b4b !important;
     color: white !important;
     border: none !important;
@@ -23,15 +22,12 @@ button[kind="primary"][key="en_btn"] {
     padding: 0.25rem 0 !important;
     font-weight: bold !important;
     text-align: center !important;
-    display: inline-block !important;
 }
-button[kind="primary"][key="zh_btn"]:hover,
-button[kind="primary"][key="en_btn"]:hover {
+#zh_btn:hover, #en_btn:hover {
     background-color: #e03a3a !important;
 }
-/* 确保按钮所在的列不会压缩按钮宽度 */
-div[data-testid="column"]:nth-of-type(2),
-div[data-testid="column"]:nth-of-type(3) {
+/* 确保按钮所在的列不会挤压按钮宽度 */
+div[data-testid="column"]:nth-child(2), div[data-testid="column"]:nth-child(3) {
     text-align: center !important;
 }
 </style>
