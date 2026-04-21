@@ -118,7 +118,7 @@ def generate_token(email):
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
 # ================== 管理员邮箱列表 ==================
-ADMIN_EMAILS = ["admin@techlife.com", "your-email@example.com"]  # 请修改为你的管理员邮箱
+ADMIN_EMAILS = ["admin@techlife.com", "techlife2027@gmail.com"]  # 请修改为你的管理员邮箱
 
 # ================== 初始化 session_state ==================
 if "authenticated" not in st.session_state:
