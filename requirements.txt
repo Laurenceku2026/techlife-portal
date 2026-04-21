@@ -2,3 +2,4 @@ streamlit>=1.28.0
 st-supabase-connection
 supabase
 pyjwt>=2.8.0
+pandas
