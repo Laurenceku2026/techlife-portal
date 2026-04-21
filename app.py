@@ -292,7 +292,7 @@ else:
         # 生成 token
         if st.session_state.token is None:
             st.session_state.token = generate_token(st.session_state.user_email)
-        token = st.session_state.token
+        token = generate_token(st.session_state.user_email)
         
         # 工具链接（请修改为你的实际子域名）
         lang = st.session_state.language   # 'zh' 或 'en'
