@@ -295,6 +295,7 @@ else:
         token = generate_token(st.session_state.user_email)
         st.write("DEBUG_TOKEN:", token)   # 临时显示在页面上
         st.write("DEBUG_TOKEN_LEN:", len(token))
+        st.write("All secrets keys:", st.secrets.keys())
         st.write("PORTAL KEY:", st.secrets["JWT_SECRET_KEY"])
         
         # 工具链接（请修改为你的实际子域名）
