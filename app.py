@@ -1,240 +1,217 @@
 import streamlit as st
-from supabase import create_client
-import jwt
-import time
-from datetime import datetime
+from supabase import create_client, Client
 
-# ================== 页面配置 ==================
-st.set_page_config(page_title="TechLife Suite", layout="wide")
-
-# ================== 自定义 CSS（语言按钮红底白字） ==================
-st.markdown("""
-<style>
-button[kind="primary"][key="zh_btn"],
-button[kind="primary"][key="en_btn"] {
-    background-color: #ff4b4b !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 8px !important;
-    width: 100px !important;
-    padding: 0.25rem 0 !important;
-    font-weight: bold !important;
-}
-div[data-testid="column"]:nth-of-type(2),
-div[data-testid="column"]:nth-of-type(3) {
-    text-align: center !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ================== Supabase 客户端（使用 service_role 绕过 RLS） ==================
-def get_supabase():
-    url = st.secrets["connections"]["supabase"]["SUPABASE_URL"]
-    key = st.secrets["connections"]["supabase"]["SUPABASE_SERVICE_ROLE_KEY"]
-    return create_client(url, key)
-
-supabase = get_supabase()
-
-# ================== 语言配置 ==================
-TEXTS = {
+# ================== 1. 语言配置字典 (在这里管理所有文字) ==================
+# 这是一个简单的翻译表，你可以根据需要添加更多文字
+TRANSLATIONS = {
     "zh": {
-        "title": "🚀 TechLife Suite",
-        "welcome": "🔐 欢迎使用 TechLife Suite",
-        "login_prompt": "请登录或注册以继续",
-        "email": "邮箱",
-        "password": "密码",
-        "login": "登录",
-        "register": "注册",
-        "submit": "提交",
-        "login_success": "登录成功",
-        "register_success": "注册成功！请登录。",
-        "login_fail": "登录失败",
-        "register_fail": "注册失败",
-        "logout": "🚪 登出",
-        "logged_in_as": "已登录: {}",
-        "choose_tool": "请选择您要使用的 AI 分析工具：",
-        "product": "📊 产品可行性分析",
-        "dfmea": "⚙️ DFMEA 分析",
-        "tolerance": "📏 公差分析",
-        "use_now": "立即使用",
-        "subscription": "订阅计划",
-        "free": "免费版",
-        "pro": "专业版",
-        "remaining": "本月剩余免费次数: {}",
-        "unlimited": "无限次使用",
-        "upgrade": "升级订阅",
-        "admin": "⚙️",
-        "mode": "模式",
+        "app_title": "🚀 TechLife Suite 门户",
+        "app_desc": "一站式工程研发 AI 工具集",
+        "login_tab": "登录",
+        "signup_tab": "注册",
+        "email_label": "邮箱",
+        "password_label": "密码",
+        "login_btn": "登录",
+        "signup_btn": "注册",
+        "logout_btn": "退出登录",
+        "premium_status": "👑 高级会员",
+        "free_status": "⚠️ 免费版",
+        "upgrade_btn": "💳 升级会员",
+        "welcome_msg": "🛠️ 我的工具箱",
+        "tool_1_name": "1. 📊 产品可行性分析",
+        "tool_1_desc": "基于25年经验的AI产品分析师。",
+        "tool_2_name": "2. 🔍 AI 风险分析 (AI-DQA)",
+        "tool_2_desc": "基于知识图谱的可靠性工程助手。",
+        "tool_3_name": "3. 📐 公差分析 (Para-Vary)",
+        "tool_3_desc": "蒙特卡洛模拟与公差堆叠分析。",
+        "open_tool": "打开工具",
+        "locked_msg": "🔒 仅限会员使用",
+        "login_success": "登录成功！",
+        "login_fail": "登录失败：",
+        "signup_success": "注册成功！请检查邮箱验证。",
+        "payment_success": "🎉 支付成功！您现在是高级会员！"
     },
     "en": {
-        "title": "🚀 TechLife Suite",
-        "welcome": "🔐 Welcome to TechLife Suite",
-        "login_prompt": "Please log in or sign up",
-        "email": "Email",
-        "password": "Password",
-        "login": "Login",
-        "register": "Sign Up",
-        "submit": "Submit",
-        "login_success": "Login successful",
-        "register_success": "Registration successful! Please log in.",
-        "login_fail": "Login failed",
-        "register_fail": "Registration failed",
-        "logout": "🚪 Logout",
-        "logged_in_as": "Logged in as: {}",
-        "choose_tool": "Choose your AI analysis tool:",
-        "product": "📊 Product Feasibility",
-        "dfmea": "⚙️ DFMEA Analysis",
-        "tolerance": "📏 Tolerance Analysis",
-        "use_now": "Use Now",
-        "subscription": "Subscription Plan",
-        "free": "Free",
-        "pro": "Pro",
-        "remaining": "Free trials remaining: {}",
-        "unlimited": "Unlimited",
-        "upgrade": "Upgrade",
-        "admin": "⚙️",
-        "mode": "Mode",
+        "app_title": "🚀 TechLife Suite Portal",
+        "app_desc": "One-stop AI Toolkit for Engineering R&D",
+        "login_tab": "Login",
+        "signup_tab": "Sign Up",
+        "email_label": "Email",
+        "password_label": "Password",
+        "login_btn": "Login",
+        "signup_btn": "Sign Up",
+        "logout_btn": "Logout",
+        "premium_status": "👑 Premium Member",
+        "free_status": "⚠️ Free Plan",
+        "upgrade_btn": "💳 Upgrade ($9.9/mo)",
+        "welcome_msg": "🛠️ My Toolkits",
+        "tool_1_name": "1. 📊 Product Feasibility",
+        "tool_1_desc": "AI analyst with 25 years of experience.",
+        "tool_2_name": "2. 🔍 AI Risk Analysis (AI-DQA)",
+        "tool_2_desc": "Knowledge graph based reliability assistant.",
+        "tool_3_name": "3. 📐 Tolerance Analysis (Para-Vary)",
+        "tool_3_desc": "Monte Carlo simulation & stack-up analysis.",
+        "open_tool": "Open Tool",
+        "locked_msg": "🔒 Premium Only",
+        "login_success": "Login Successful!",
+        "login_fail": "Login Failed: ",
+        "signup_success": "Sign up successful! Please verify email.",
+        "payment_success": "🎉 Payment Successful! You are Premium!"
     }
 }
 
-if "lang" not in st.session_state:
-    st.session_state.lang = "zh"
+# ================== 2. 初始化设置 ==================
+st.set_page_config(page_title="TechLife Suite", layout="centered")
 
+# 初始化 Supabase (请确保在 Secrets 中配置了密钥)
+url = st.secrets["SUPABASE_URL"]
+key = st.secrets["SUPABASE_KEY"]
+supabase: Client = create_client(url, key)
+
+# 初始化语言状态 (默认为中文)
+if "current_lang" not in st.session_state:
+    st.session_state.current_lang = "zh"
+
+# 初始化用户状态
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+# 获取当前语言的翻译函数
 def t(key):
-    return TEXTS[st.session_state.lang].get(key, key)
+    return TRANSLATIONS[st.session_state.current_lang][key]
 
-# ================== 顶部栏（语言切换 + 齿轮） ==================
-col1, col2, col3, col4 = st.columns([6, 1, 1, 1])
-with col2:
-    if st.button("中文", key="zh_btn", type="primary"):
-        st.session_state.lang = "zh"
-        st.rerun()
-with col3:
-    if st.button("English", key="en_btn", type="primary"):
-        st.session_state.lang = "en"
-        st.rerun()
-with col4:
-    if st.button(t("admin"), key="admin_btn"):
-        st.session_state.show_admin = not st.session_state.get("show_admin", False)
-        st.rerun()
+# ================== 3. 辅助函数 ==================
+def sync_profile(user):
+    if user:
+        # 检查用户是否存在于 profiles 表
+        data, count = supabase.table("profiles").select("id").eq("id", user.id).execute()
+        if not data:
+            supabase.table("profiles").insert({
+                "id": user.id,
+                "email": user.email,
+                "is_premium": False
+            }).execute()
 
-# ================== JWT 配置 ==================
-JWT_SECRET = st.secrets["JWT_SECRET_KEY"]
-TOKEN_EXPIRY = 3600  # 1小时
+def check_subscription(user_id):
+    data, count = supabase.table("profiles").select("is_premium").eq("id", user_id).execute()
+    if data and len(data) > 0:
+        return data['is_premium']
+    return False
 
-def generate_token(email):
-    payload = {"email": email, "exp": time.time() + TOKEN_EXPIRY}
-    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-
-# ================== 订阅函数 ==================
-def get_user_subscription(email):
-    """获取用户订阅信息，不存在则创建默认记录"""
-    result = supabase.table("user_authentication").select("*").eq("email", email).execute()
-    if result.data:
-        return result.data[0]
-    # 不存在则创建默认记录
-    default = {
-        "email": email,
-        "subscription_status": "free",
-        "usage_count": 0,
-        "usage_limit": 10
-    }
-    supabase.table("user_authentication").insert(default).execute()
-    return default
-
-def increment_usage(email):
-    """增加使用次数（仅免费用户）"""
-    user = get_user_subscription(email)
-    if user["subscription_status"] == "active":
-        return
-    supabase.table("user_authentication").update(
-        {"usage_count": user["usage_count"] + 1}
-    ).eq("email", email).execute()
-
-# ================== 登录/注册 ==================
-if not st.session_state.get("authenticated", False):
-    st.title(t("welcome"))
-    with st.form("auth_form"):
-        email = st.text_input(t("email"))
-        password = st.text_input(t("password"), type="password")
-        mode = st.radio(t("mode"), [t("login"), t("register")], horizontal=True)
-        submitted = st.form_submit_button(t("submit"))
+# ================== 4. 顶部语言切换栏 ==================
+def render_language_switcher():
+    col1, col2 = st.columns() # 左边占位，右边放按钮
+    with col2:
+        # 使用分段控制器作为语言切换按钮
+        lang_options = {"中文": "zh", "English": "en"}
+        # 找到当前语言对应的标签
+        current_label = [k for k, v in lang_options.items() if v == st.session_state.current_lang]
         
-        if submitted:
-            try:
-                if mode == t("login"):
-                    resp = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                    if resp.user:
-                        st.session_state.authenticated = True
-                        st.session_state.user_email = email
+        # 当用户点击切换时，更新 session_state 并重新运行
+        new_lang_label = st.segmented_control("Language", list(lang_options.keys()), default=current_label, key="lang_switcher")
+        if lang_options[new_lang_label] != st.session_state.current_lang:
+            st.session_state.current_lang = lang_options[new_lang_label]
+            st.rerun()<websource>source_group_web_1</websource>
+
+# ================== 5. 主程序逻辑 ==================
+def main():
+    # 渲染顶部的语言切换器
+    render_language_switcher()
+
+    user = st.session_state.user
+
+    # --- 场景 A: 用户未登录 ---
+    if not user:
+        st.title(t("app_title"))
+        st.write(t("app_desc"))
+        
+        tab1, tab2 = st.tabs([t("login_tab"), t("signup_tab")])
+        
+        with tab1:
+            email = st.text_input(t("email_label"), key="login_email")
+            pwd = st.text_input(t("password_label"), type="password", key="login_pwd")
+            if st.button(t("login_btn")):
+                try:
+                    res = supabase.auth.sign_in_with_password({"email": email, "password": pwd})
+                    if res.user:
+                        st.session_state.user = res.user
+                        sync_profile(res.user)
                         st.success(t("login_success"))
                         st.rerun()
                     else:
-                        st.error(t("login_fail"))
-                else:  # 注册
-                    resp = supabase.auth.sign_up({"email": email, "password": password})
-                    if resp.user:
-                        # 自动创建订阅记录
-                        get_user_subscription(email)
-                        st.success(t("register_success"))
-                    else:
-                        st.error(t("register_fail"))
-            except Exception as e:
-                st.error(f"{t('login_fail') if mode == t('login') else t('register_fail')}: {e}")
+                        st.error(t("login_fail") + res.message)
+                except Exception as e:
+                    st.error(str(e))
+        
+        with tab2:
+            new_email = st.text_input(t("email_label"), key="reg_email")
+            new_pwd = st.text_input(t("password_label"), type="password", key="reg_pwd")
+            if st.button(t("signup_btn")):
+                try:
+                    res = supabase.auth.sign_up({"email": new_email, "password": new_pwd})
+                    if res.user:
+                        st.success(t("signup_success"))
+                        st.session_state.user = res.user
+                        sync_profile(res.user)
+                        st.rerun()
+                except Exception as e:
+                    st.error(str(e))
 
-else:
-    # ================== 已登录界面 ==================
-    # 侧边栏
-    st.sidebar.success(t("logged_in_as").format(st.session_state.user_email))
-    if st.sidebar.button(t("logout")):
-        st.session_state.clear()
-        st.rerun()
-    
-    # 订阅信息
-    user = get_user_subscription(st.session_state.user_email)
-    is_pro = user["subscription_status"] == "active"
-    st.sidebar.markdown(f"**{t('subscription')}**: {t('pro') if is_pro else t('free')}")
-    if is_pro:
-        st.sidebar.success(t("unlimited"))
+    # --- 场景 B: 用户已登录 ---
     else:
-        remaining = max(0, user["usage_limit"] - user["usage_count"])
-        st.sidebar.info(t("remaining").format(remaining))
-        if remaining == 0:
-            st.sidebar.warning(t("remaining").format(0))
-    
-    # 生成 JWT token
-    token = generate_token(st.session_state.user_email)
-    
-    # 工具链接（请修改为你的实际子域名）
-    lang = st.session_state.lang
-    product_url = f"https://appuct-feasibility-analysis.streamlit.app/?token={token}&lang={lang}"
-    dfmea_url = f"https://ai-design-dfmea.streamlit.app/?token={token}&lang={lang}"
-    tolerance_url = f"https://dfss-stack-tolerance-analysis.streamlit.app/?token={token}&lang={lang}"
-    
-    # 主界面
-    st.title(t("title"))
-    st.markdown(t("choose_tool"))
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown(f"### {t('product')}")
-        st.link_button(t("use_now"), product_url)
-    with col2:
-        st.markdown(f"### {t('dfmea')}")
-        st.link_button(t("use_now"), dfmea_url)
-    with col3:
-        st.markdown(f"### {t('tolerance')}")
-        st.link_button(t("use_now"), tolerance_url)
-    
-    # 管理员后台（简单版）
-    if st.session_state.get("show_admin", False):
-        st.divider()
-        st.subheader("🛠️ 管理后台")
-        try:
-            users = supabase.table("user_authentication").select("*").execute()
-            if users.data:
-                st.dataframe(users.data, use_container_width=True)
-            else:
-                st.info("暂无用户")
-        except Exception as e:
-            st.error(f"加载用户列表失败: {e}")
+        is_premium = check_subscription(user.id)
+        
+        # 侧边栏
+        st.sidebar.title(f"👤 {user.email}")
+        if is_premium:
+            st.sidebar.success(t("premium_status"))
+        else:
+            st.sidebar.warning(t("free_status"))
+            if st.sidebar.button(t("upgrade_btn")):
+                # 这里可以放 Stripe 链接
+                st.info("支付功能开发中...")
+        
+        if st.sidebar.button(t("logout_btn")):
+            supabase.auth.sign_out()
+            st.session_state.user = None
+            st.rerun()
+
+        # 主界面
+        st.title(t("welcome_msg"))
+        
+        # 工具 1
+        st.subheader(t("tool_1_name"))
+        st.write(t("tool_1_desc"))
+        c1, c2 = st.columns()
+        with c1:
+            st.button(t("open_tool"), key="btn_1", use_container_width=True)
+        with c2:
+            if not is_premium:
+                st.info(t("locked_msg"))<websource>source_group_web_2</websource>
+
+        st.markdown("---")
+
+        # 工具 2
+        st.subheader(t("tool_2_name"))
+        st.write(t("tool_2_desc"))
+        c1, c2 = st.columns()
+        with c1:
+            st.button(t("open_tool"), key="btn_2", use_container_width=True)
+        with c2:
+            if not is_premium:
+                st.info(t("locked_msg"))<websource>source_group_web_3</websource>
+
+        st.markdown("---")
+
+        # 工具 3
+        st.subheader(t("tool_3_name"))
+        st.write(t("tool_3_desc"))
+        c1, c2 = st.columns()
+        with c1:
+            st.button(t("open_tool"), key="btn_3", use_container_width=True)
+        with c2:
+            if not is_premium:
+                st.info(t("locked_msg"))<websource>source_group_web_4</websource>
+
+if __name__ == "__main__":
+    main()
