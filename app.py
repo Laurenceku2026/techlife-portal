@@ -4,15 +4,16 @@ import jwt
 import time
 import pandas as pd
 from datetime import datetime
+from subscription_utils import get_subscription_display, can_use_tool, increment_usage_count, get_supabase_client
 
 # ================== 页面配置 ==================
 st.set_page_config(page_title="TechLife Suite", layout="wide")
 
-# ================== 自定义 CSS：通过 id 选择器精确控制中英文按钮 ==================
+# ================== 自定义 CSS：语言按钮红底白字且等宽 ==================
 st.markdown("""
 <style>
-/* 直接通过 id 选择器，最可靠 */
-#zh_btn, #en_btn {
+button[kind="primary"][key="zh_btn"],
+button[kind="primary"][key="en_btn"] {
     background-color: #ff4b4b !important;
     color: white !important;
     border: none !important;
@@ -22,12 +23,14 @@ st.markdown("""
     padding: 0.25rem 0 !important;
     font-weight: bold !important;
     text-align: center !important;
+    display: inline-block !important;
 }
-#zh_btn:hover, #en_btn:hover {
+button[kind="primary"][key="zh_btn"]:hover,
+button[kind="primary"][key="en_btn"]:hover {
     background-color: #e03a3a !important;
 }
-/* 确保按钮所在的列不会挤压按钮宽度 */
-div[data-testid="column"]:nth-child(2), div[data-testid="column"]:nth-child(3) {
+div[data-testid="column"]:nth-of-type(2),
+div[data-testid="column"]:nth-of-type(3) {
     text-align: center !important;
 }
 </style>
@@ -87,6 +90,15 @@ TEXTS = {
         "no_users": "暂无用户",
         "load_error": "加载用户列表失败",
         "gear_tooltip": "管理员登录",
+        "subscription_plan": "订阅计划",
+        "pro": "专业版",
+        "free": "免费版",
+        "unlimited": "无限次使用",
+        "usage_left": "本月剩余免费次数: {}",
+        "free_limit_warning": "您本月免费次数已用完（{}次）。请升级订阅以继续使用。",
+        "upgrade_button": "升级订阅",
+        "sync_success": "用户记录已同步",
+        "default_insert_error": "创建用户记录失败: {}",
     },
     "en": {
         "app_title": "TechLife Suite",
@@ -125,6 +137,15 @@ TEXTS = {
         "no_users": "No users found",
         "load_error": "Failed to load users",
         "gear_tooltip": "Admin Login",
+        "subscription_plan": "Subscription Plan",
+        "pro": "Pro",
+        "free": "Free",
+        "unlimited": "Unlimited usage",
+        "usage_left": "Free trial remaining this month: {}",
+        "free_limit_warning": "You have used up your free trial ({} times). Please upgrade to continue.",
+        "upgrade_button": "Upgrade",
+        "sync_success": "User record synced",
+        "default_insert_error": "Failed to create user record: {}",
     }
 }
 
@@ -153,7 +174,7 @@ with top_col4:
         st.rerun()
 
 # ================== JWT 配置 ==================
-JWT_SECRET = st.secrets["connections"]["supabase"].get("JWT_SECRET_KEY", "fallback-secret")
+JWT_SECRET = st.secrets.get("JWT_SECRET_KEY", "fallback-secret-key-change-me")
 TOKEN_EXPIRY_SECONDS = 3600
 
 def generate_token(email):
@@ -161,7 +182,7 @@ def generate_token(email):
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
 # ================== 管理员邮箱列表 ==================
-ADMIN_EMAILS = ["Techlife2027@gmail.com"]   # 请替换为实际管理员邮箱
+ADMIN_EMAILS = ["Techlife2027@gmail.com"]
 
 # ================== 初始化 session_state ==================
 if "authenticated" not in st.session_state:
@@ -205,9 +226,19 @@ def auth_form():
                         st.rerun()
                     else:
                         st.error(t("login_fail"))
-                else:
+                else:  # 注册
                     resp = supabase.auth.sign_up({"email": email, "password": password})
                     if resp.user:
+                        # 同步到 user_authentication 表
+                        try:
+                            supabase.table("user_authentication").insert({
+                                "email": email,
+                                "subscription_status": "free",
+                                "usage_count": 0,
+                                "usage_limit": 10
+                            }).execute()
+                        except Exception as sync_err:
+                            st.error(t("default_insert_error").format(sync_err))
                         st.success(t("register_success"))
                     else:
                         st.error(t("register_fail"))
@@ -285,17 +316,32 @@ else:
         st.markdown(t("login_prompt"))
         auth_form()
     else:
+        # 侧边栏显示用户信息和订阅状态
         st.sidebar.success(t("logged_in_as").format(st.session_state.user_email))
         if st.sidebar.button(t("logout")):
             logout()
         
+        # 获取订阅显示信息
+        email = st.session_state.user_email
+        sub_display = get_subscription_display(email, st.session_state.language)
+        st.sidebar.markdown(f"**{t('subscription_plan')}**: {sub_display['plan_text']}")
+        if sub_display['is_pro']:
+            st.sidebar.success(sub_display['remaining_text'])
+        else:
+            st.sidebar.info(sub_display['remaining_text'])
+            if sub_display['used'] >= sub_display['limit']:
+                st.sidebar.warning(t("free_limit_warning").format(sub_display['limit']))
+                # 升级按钮（后续可替换为 Stripe 链接）
+                if st.sidebar.button(t("upgrade_button")):
+                    st.info("升级功能即将开放")
+        
         # 生成 token
         if st.session_state.token is None:
             st.session_state.token = generate_token(st.session_state.user_email)
-        token = generate_token(st.session_state.user_email)
-                
+        token = st.session_state.token
+        
         # 工具链接（请修改为你的实际子域名）
-        lang = st.session_state.language   # 'zh' 或 'en'
+        lang = st.session_state.language
         product_url = f"https://appuct-feasibility-analysis.streamlit.app/?token={token}&lang={lang}"
         dfmea_url = f"https://ai-design-dfmea.streamlit.app/?token={token}&lang={lang}"
         tolerance_url = f"https://dfss-stack-tolerance-analysis.streamlit.app/?token={token}&lang={lang}"
