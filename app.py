@@ -111,7 +111,7 @@ def render_language_switcher():
         new_lang_label = st.segmented_control("Language", list(lang_options.keys()), default=current_label, key="lang_switcher")
         if lang_options[new_lang_label] != st.session_state.current_lang:
             st.session_state.current_lang = lang_options[new_lang_label]
-            st.rerun()<websource>source_group_web_1</websource>
+            st.rerun()
 
 # ================== 5. 主程序逻辑 ==================
 def main():
