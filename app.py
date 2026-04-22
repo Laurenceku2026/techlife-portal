@@ -4,7 +4,7 @@ import jwt
 import time
 import pandas as pd
 from datetime import datetime
-from subscription_utils import get_subscription_display, can_use_tool, increment_usage_count, get_supabase_client
+from subscription_utils import get_subscription_display
 
 # ================== 页面配置 ==================
 st.set_page_config(page_title="TechLife Suite", layout="wide")
@@ -40,7 +40,7 @@ div[data-testid="column"]:nth-of-type(3) {
 conn = st.connection("supabase", type=SupabaseConnection)
 supabase = conn.client
 
-# 获取 service_role key（用于管理后台）
+# 获取 service_role key（用于管理后台和注册时插入用户记录）
 try:
     service_role_key = st.secrets["connections"]["supabase"]["SUPABASE_SERVICE_ROLE_KEY"]
     from supabase import create_client
@@ -229,16 +229,19 @@ def auth_form():
                 else:  # 注册
                     resp = supabase.auth.sign_up({"email": email, "password": password})
                     if resp.user:
-                        # 同步到 user_authentication 表
-                        try:
-                            supabase.table("user_authentication").insert({
-                                "email": email,
-                                "subscription_status": "free",
-                                "usage_count": 0,
-                                "usage_limit": 10
-                            }).execute()
-                        except Exception as sync_err:
-                            st.error(t("default_insert_error").format(sync_err))
+                        # 使用 service_role 客户端插入记录（绕过 RLS）
+                        if supabase_admin:
+                            try:
+                                supabase_admin.table("user_authentication").insert({
+                                    "email": email,
+                                    "subscription_status": "free",
+                                    "usage_count": 0,
+                                    "usage_limit": 10
+                                }).execute()
+                            except Exception as sync_err:
+                                st.error(t("default_insert_error").format(sync_err))
+                        else:
+                            st.warning("管理员服务未配置，用户记录未同步")
                         st.success(t("register_success"))
                     else:
                         st.error(t("register_fail"))
