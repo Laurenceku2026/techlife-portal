@@ -174,7 +174,7 @@ with top_col4:
         st.rerun()
 
 # ================== JWT 配置 ==================
-JWT_SECRET = st.secrets.get("JWT_SECRET_KEY", "fallback-secret-key-change-me")
+JWT_SECRET = st.secrets["connections"]["supabase"].get("JWT_SECRET_KEY", "fallback-secret-key-change-me")
 TOKEN_EXPIRY_SECONDS = 3600
 
 def generate_token(email):
