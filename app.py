@@ -293,7 +293,8 @@ else:
         if st.session_state.token is None:
             st.session_state.token = generate_token(st.session_state.user_email)
         token = generate_token(st.session_state.user_email)
-        st.write("DEBUG token:", token)   # 临时显示在页面上，测试完删除
+        st.write("DEBUG_TOKEN:", token)   # 临时显示在页面上
+        st.write("DEBUG_TOKEN_LEN:", len(token))
         
         # 工具链接（请修改为你的实际子域名）
         lang = st.session_state.language   # 'zh' 或 'en'
