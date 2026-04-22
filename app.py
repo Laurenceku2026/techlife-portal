@@ -187,8 +187,7 @@ def main():
             st.button(t("open_tool"), key="btn_1", use_container_width=True)
         with c2:
             if not is_premium:
-                st.info(t("locked_msg"))<websource>source_group_web_2</websource>
-
+                st.info(t("locked_msg"))
         st.markdown("---")
 
         # 工具 2
@@ -199,7 +198,7 @@ def main():
             st.button(t("open_tool"), key="btn_2", use_container_width=True)
         with c2:
             if not is_premium:
-                st.info(t("locked_msg"))<websource>source_group_web_3</websource>
+                st.info(t("locked_msg"))
 
         st.markdown("---")
 
@@ -211,7 +210,7 @@ def main():
             st.button(t("open_tool"), key="btn_3", use_container_width=True)
         with c2:
             if not is_premium:
-                st.info(t("locked_msg"))<websource>source_group_web_4</websource>
+                st.info(t("locked_msg"))
 
 if __name__ == "__main__":
     main()
