@@ -84,16 +84,16 @@ def t(key):
 def sync_profile(user):
     if user:
         # 检查用户是否存在于 profiles 表
-        data, count = supabase.table("profiles").select("id").eq("id", user.id).execute()
+        data, count = supabase.table("Profiles").select("id").eq("id", user.id).execute()
         if not data:
-            supabase.table("profiles").insert({
+            supabase.table("Profiles").insert({
                 "id": user.id,
                 "email": user.email,
                 "is_premium": False
             }).execute()
 
 def check_subscription(user_id):
-    data, count = supabase.table("profiles").select("is_premium").eq("id", user_id).execute()
+    data, count = supabase.table("Profiles").select("is_premium").eq("id", user_id).execute()
     if data and len(data) > 0:
         return data['is_premium']
     return False
