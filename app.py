@@ -100,7 +100,7 @@ def check_subscription(user_id):
 
 # ================== 4. 顶部语言切换栏 ==================
 def render_language_switcher():
-    col1, col2 = st.columns() # 左边占位，右边放按钮
+    col1, col2 = st.columns(2) # 左边占位，右边放按钮
     with col2:
         # 使用分段控制器作为语言切换按钮
         lang_options = {"中文": "zh", "English": "en"}
