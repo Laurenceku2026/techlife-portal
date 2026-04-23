@@ -411,7 +411,36 @@ def render_reset_password_form():
             st.rerun()
 
 def render_main_app():
-    """登录后的主应用界面（应用导航）"""
+    # 测试按钮 - 放在应用导航之前
+st.markdown("---")
+st.subheader("🧪 测试区（管理员专用）")
+
+col_test1, col_test2, col_test3 = st.columns(3)
+with col_test1:
+    if st.button("手动消耗1次", key="test_consume"):
+        if supabase:
+            try:
+                # 获取当前次数
+                resp = supabase.table("profiles").select("free_trials_remaining").eq("id", st.session_state.user_id).execute()
+                current = resp.data[0].get("free_trials_remaining", 999) if resp.data else 999
+                # 减1
+                supabase.table("profiles").update({"free_trials_remaining": current - 1}).eq("id", st.session_state.user_id).execute()
+                st.success(f"✅ 已从 {current} 减到 {current - 1}")
+                st.rerun()
+            except Exception as e:
+                st.error(f"错误: {e}")
+
+with col_test2:
+    if st.button("查看当前次数", key="test_view"):
+        resp = supabase.table("profiles").select("free_trials_remaining").eq("id", st.session_state.user_id).execute()
+        if resp.data:
+            st.info(f"当前剩余次数: {resp.data[0].get('free_trials_remaining')}")
+
+with col_test3:
+    if st.button("刷新页面", key="test_refresh"):
+        st.rerun()
+
+       """登录后的主应用界面（应用导航）"""
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         profile = get_user_profile(st.session_state.user_id)
