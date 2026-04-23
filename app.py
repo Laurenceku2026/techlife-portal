@@ -87,14 +87,13 @@ TEXTS = {
         "total_used": "总使用次数",
         "reset_all_trials": "重置所有用户免费次数",
         "batch_ops": "批量操作",
-        "launch": "启动",
+        "launch": "在新窗口打开",
         "login_failed": "登录失败",
         "register_success": "注册成功！请登录",
         "email_exists": "该邮箱已注册，请直接登录",
         "coming_soon": "子应用即将上线",
         "trial_consumed": "✅ 免费次数已消耗！剩余 {} 次",
-        "app_address": "📱 子应用地址: {}",
-        "subapp_note": "⚠️ 子应用需要单独部署并修改代码接收参数",
+        "open_new_tab": "🔗 点击按钮将在新标签页中打开应用",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -160,14 +159,13 @@ Let AI become your Chief Quality Engineer.
         "total_used": "Total Used",
         "reset_all_trials": "Reset All Users Trials",
         "batch_ops": "Batch Operations",
-        "launch": "Launch",
+        "launch": "Open in New Tab",
         "login_failed": "Login failed",
         "register_success": "Registration successful! Please login.",
         "email_exists": "Email already registered. Please login.",
         "coming_soon": "Sub-app coming soon",
         "trial_consumed": "✅ Trial consumed! {} remaining",
-        "app_address": "📱 App URL: {}",
-        "subapp_note": "⚠️ Sub-app needs separate deployment",
+        "open_new_tab": "🔗 Click button to open app in new tab",
     }
 }
 
@@ -438,6 +436,7 @@ def render_main_app():
         
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
+        st.caption(t()["open_new_tab"])
         
         apps = {
             "📊 Product Feasibility": {
@@ -469,13 +468,12 @@ def render_main_app():
                     desc = app_info["desc"] if st.session_state.lang == "zh" else app_info["desc_en"]
                     st.caption(desc)
                 with col_btn:
-                    if st.button(t()["launch"], key=app_info["key"], use_container_width=True):
+                    # 使用 link_button 在新窗口打开
+                    full_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}"
+                    if st.link_button(t()["launch"], full_url, use_container_width=True):
+                        # 消耗免费次数
                         allowed, remaining, msg = check_and_consume_trial(st.session_state.user_id, app_info["key"])
-                        if allowed:
-                            st.success(t()["trial_consumed"].format(remaining))
-                            st.info(t()["app_address"].format(app_info["url"]))
-                            st.warning(t()["subapp_note"])
-                        else:
+                        if not allowed:
                             st.error(msg)
 
 def render_admin_panel():
@@ -490,6 +488,7 @@ def render_admin_panel():
         return
     
     try:
+        # 使用 service_role key 或直接查询
         response = supabase.table("profiles").select("*").execute()
         users = response.data
         
