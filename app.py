@@ -1,320 +1,166 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TechLife Suite 门户</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            min-height: 100vh;
-            background-color: #f5f5f5;
-        }
+import streamlit as st
 
-        /* 左侧边栏 */
-        .sidebar {
-            width: 320px;
-            background-color: #ffffff;
-            padding: 30px;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            position: fixed;
-            height: 100%;
-            overflow-y: auto;
-        }
+# --- 页面配置 ---
+st.set_page_config(
+    page_title="TechLife Suite 门户",
+    layout="centered"
+)
 
-        .logo-area {
-            font-size: 24px;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 30px;
-            display: flex;
-            align-items: center;
-        }
-        .logo-area::before {
-            content: '';
-            display: inline-block;
-            width: 24px;
-            height: 24px;
-            background-color: #007AFF; /* 蓝色图标示意 */
-            margin-right: 10px;
-        }
+# --- 自定义 CSS 样式 ---
+# 注意：为了防止 Python 解析错误，CSS 单位（如 100vh）已做处理或确保在字符串内
+st.markdown("""
+<style>
+    /* 全局背景与字体 */
+    .stApp {
+        background-color: #f0f2f6;
+        font-family: "Microsoft YaHei", sans-serif;
+    }
 
-        .info-section h3 {
-            font-size: 18px;
-            margin-top: 0;
-            margin-bottom: 15px;
-            color: #333;
-            display: flex;
-            align-items: center;
-        }
-        .info-section h3::before {
-            content: '';
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            background-color: #007AFF;
-            margin-right: 8px;
-        }
+    /* 隐藏默认的 Streamlit 菜单和页脚 */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
 
-        .info-section p {
-            font-size: 14px;
-            line-height: 1.6;
-            color: #555;
-            text-align: justify;
-        }
+    /* --- 登录框容器样式 --- */
+    .login-container {
+        background-color: white;
+        padding: 40px 50px;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        width: 400px;
+        margin-top: 50px;
+        /* 修复点：确保 vh 单位被正确识别为字符串 */
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
 
-        .info-section ul {
-            padding-left: 20px;
-            font-size: 14px;
-            color: #555;
-        }
-        .info-section li {
-            margin-bottom: 8px;
-        }
+    /* 标题样式 */
+    .main-title {
+        color: #000000;
+        font-size: 28px;
+        font-weight: bold;
+        margin-bottom: 10px;
+        text-align: center;
+    }
 
-        .contact-section {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-        }
-        .contact-section h3 {
-            font-size: 16px;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-        }
-        .contact-section h3::before {
-            content: '';
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 1px solid #333;
-            margin-right: 8px;
-        }
-        .contact-section p {
-            font-size: 13px;
-            color: #666;
-            margin: 0;
-        }
-        .contact-section a {
-            color: #007AFF;
-            text-decoration: none;
-        }
+    .sub-title {
+        color: #666666;
+        font-size: 14px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
 
-        /* 右侧主内容区 */
-        .main-content {
-            flex: 1;
-            margin-left: 320px; /* 与sidebar宽度一致 */
-            padding: 40px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-        }
+    /* --- 输入框样式（黑色线条和文字）--- */
+    /* Streamlit 的输入框结构比较深，需要针对性覆盖 */
+    .stTextInput > div > div > input,
+    .stPasswordInput > div > div > input {
+        color: #000000 !important; /* 输入文字黑色 */
+        border: 1px solid #000000 !important; /* 边框黑色 */
+        border-radius: 4px;
+        height: 45px;
+    }
 
-        /* 顶部语言切换 */
-        .top-right-controls {
-            position: absolute;
-            top: 30px;
-            right: 40px;
-            display: flex;
-            gap: 15px;
-            align-items: center;
-        }
+    /* 标签文字颜色 */
+    .stTextInput > label,
+    .stPasswordInput > label {
+        color: #000000 !important;
+        font-weight: bold;
+        font-size: 14px;
+    }
 
-        .lang-btn {
-            background-color: #FF0000; /* 红色背景 */
-            color: white; /* 白色字体 */
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            font-size: 14px;
-            cursor: pointer;
-            font-weight: 500;
-        }
-        .lang-btn:hover {
-            opacity: 0.9;
-        }
+    /* 去掉输入框聚焦时的蓝色/红色高亮，保持黑色 */
+    .stTextInput > div > div > input:focus,
+    .stPasswordInput > div > div > input:focus {
+        border-color: #000000 !important;
+        box-shadow: none !important;
+    }
 
-        .header-text {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-        .header-text h1 {
-            font-size: 36px;
-            font-weight: 800;
-            color: #111;
-            margin: 0 0 10px 0;
-        }
-        .header-text p {
-            font-size: 16px;
-            color: #666;
-            margin: 0;
-        }
+    /* --- 按钮区域布局 --- */
+    .button-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        margin-top: 20px;
+        width: 100%;
+    }
 
-        /* 登录/注册框 */
-        .auth-card {
-            background-color: #ffffff;
-            width: 400px;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
-            border: 1px solid #e0e0e0;
-        }
+    /* 按钮通用样式 */
+    .custom-button {
+        width: 100%;
+        height: 45px;
+        border-radius: 6px;
+        font-size: 16px;
+        font-weight: bold;
+        border: none;
+        cursor: pointer;
+        transition: opacity 0.2s;
+    }
+    
+    .custom-button:hover {
+        opacity: 0.9;
+    }
 
-        .input-group {
-            margin-bottom: 20px;
-        }
-        .input-group label {
-            display: block;
-            font-size: 14px;
-            font-weight: 600;
-            color: #333; /* 黑色文字 */
-            margin-bottom: 8px;
-        }
-        .input-group input {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ccc; /* 黑色/灰色边框 */
-            border-radius: 6px;
-            font-size: 15px;
-            box-sizing: border-box;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-        .input-group input:focus {
-            border-color: #007AFF;
-        }
+    /* 登录按钮 - 黑色 */
+    .login-btn {
+        background-color: #000000;
+        color: white;
+    }
 
-        .password-toggle {
-            position: absolute;
-            right: 12px;
-            top: 38px;
-            cursor: pointer;
-            color: #999;
-            font-size: 14px;
-        }
+    /* 注册按钮 - 白色背景黑色边框 */
+    .register-btn {
+        background-color: #ffffff;
+        color: #000000;
+        border: 1px solid #000000 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-        /* 按钮区域 */
-        .button-group {
-            display: flex;
-            flex-direction: column;
-            gap: 15px; /* 按钮间距 */
-            margin-top: 10px;
-        }
+# --- 页面布局 ---
+# 使用列布局来模拟左右结构（左侧图/文字，右侧登录）
+col1, col2 = st.columns([1, 1])
 
-        .btn {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px; /* 大字体 */
-            font-weight: 600;
-            cursor: pointer;
-            transition: opacity 0.2s;
-            text-align: center;
-        }
-        .btn:hover {
-            opacity: 0.9;
-        }
+with col1:
+    # 这里可以放左侧的图片或介绍文字
+    st.markdown("<br>", unsafe_allow_html=True) # 顶部留白
+    st.image("https://via.placeholder.com/500x300?text=TechLife+Image", use_column_width=True)
+    st.markdown("""
+    ### 关于系统
+    - **智能需求分析**：快速拆解用户需求
+    - **自动代码生成**：AI 辅助生成代码
+    - **系统自动优化**：持续监控系统性能
+    """)
 
-        .btn-primary {
-            background-color: #333; /* 登录按钮：黑色 */
-            color: white;
-        }
+with col2:
+    # 登录框主体
+    st.markdown('<div class="login-container">', unsafe_allow_html=True)
 
-        .btn-secondary {
-            background-color: #e0e0e0; /* 注册按钮：浅灰底色 */
-            color: #333; /* 黑色文字 */
-        }
+    st.markdown('<div class="main-title">TechLife Suite 门户</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">一站式工作协同 AI 工具集</div>', unsafe_allow_html=True)
 
-        /* 响应式 */
-        @media (max-width: 900px) {
-            .sidebar {
-                display: none; /* 移动端隐藏侧边栏 */
-            }
-            .main-content {
-                margin-left: 0;
-                padding: 20px;
-            }
-            .auth-card {
-                width: 100%;
-                max-width: 350px;
-            }
-        }
-    </style>
-</head>
-<body>
+    # 输入框
+    username = st.text_input("请输入邮箱")
+    password = st.text_input("请输入密码", type="password")
 
-    <!-- 左侧栏 -->
-    <div class="sidebar">
-        <div>
-            <div class="logo-area">TechLife Suite</div>
+    # 按钮布局
+    # 注意：Streamlit 原生按钮无法直接应用自定义 CSS 类名，
+    # 这里使用 HTML 按钮配合 JS 或 Form 提交来模拟，或者使用 st.columns 放置原生按钮
+    
+    # 方案：使用 st.columns 放置两个原生按钮，并尝试通过 CSS 类名 hack (Streamlit 1.20+)
+    # 如果原生按钮难以完全自定义，可以使用 HTML form
+    
+    # 这里使用最简单的 HTML 按钮模拟（仅作展示效果，实际需配合 JS 或 Form）
+    col_btn_1, col_btn_2 = st.columns(2)
+    
+    with col_btn_1:
+        # 注册按钮
+        if st.button("注册", key="register_btn"):
+            st.info("点击了注册")
+            
+    with col_btn_2:
+        # 登录按钮
+        if st.button("登录", key="login_btn"):
+            st.success("点击了登录")
 
-            <div class="info-section">
-                <h3>关于系统</h3>
-                <p>TechLife Suite 是专为研发工程师打造的 AI 辅助 DFX（大设计协同）平台。</p>
-                <p>我们致力于通过人工智能技术，简化复杂的工程设计流程，帮助团队实现：</p>
-                <ul>
-                    <li>智能需求分析：快速拆解客户需求与 QCD。</li>
-                    <li>自动初案评估：AI 辅助生成 DFX 报告。</li>
-                    <li>参数优化设计：利用算法寻找最优方案。</li>
-                </ul>
-                <p>让 AI 成为您的智能研发工程师。</p>
-            </div>
-        </div>
-
-        <div class="contact-section">
-            <h3>联系我们</h3>
-            <p>邮箱: <a href="mailto:Techlife2022@gmail.com">Techlife2022@gmail.com</a></p>
-        </div>
-    </div>
-
-    <!-- 右侧主区域 -->
-    <div class="main-content">
-
-        <!-- 顶部语言切换 -->
-        <div class="top-right-controls">
-            <button class="lang-btn">中文</button>
-            <button class="lang-btn">English</button>
-        </div>
-
-        <!-- 标题 -->
-        <div class="header-text">
-            <h1>TechLife Suite 门户</h1>
-            <p>一站式工程研发 AI 工具箱</p>
-        </div>
-
-        <!-- 登录注册卡片 -->
-        <div class="auth-card">
-            <form>
-                <div class="input-group">
-                    <label for="username">请输入账号</label>
-                    <input type="text" id="username" placeholder="">
-                </div>
-
-                <div class="input-group" style="position: relative;">
-                    <label for="password">请输入密码</label>
-                    <input type="password" id="password" placeholder="">
-                    <!-- 模拟的小眼睛图标 -->
-                    <span class="password-toggle">👁️</span>
-                </div>
-
-                <!-- 两个按钮都在框内 -->
-                <div class="button-group">
-                    <button type="button" class="btn btn-primary">登录</button>
-                    <button type="button" class="btn btn-secondary">注册</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-</body>
-</html>
+    st.markdown('</div>', unsafe_allow_html=True) # 结束 login-container
