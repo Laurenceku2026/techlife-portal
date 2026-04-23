@@ -67,6 +67,22 @@ TEXTS = {
         "admin_login_btn": "登录",
         "admin_back": "返回用户登录",
         "admin_error": "用户名或密码错误",
+        
+        # 管理员面板内容
+        "total_users": "总用户数",
+        "pro_users": "专业版用户",
+        "free_users": "免费版用户",
+        "user_list": "用户列表",
+        "subscription_mgmt": "订阅管理",
+        "select_user": "选择用户",
+        "set_subscription": "设置订阅",
+        "months": "月数",
+        "update_btn": "更新订阅",
+        "exit_admin": "退出管理员模式",
+        "email_col": "邮箱",
+        "subscription_col": "订阅",
+        "trials_left": "剩余次数",
+        "expires_col": "到期时间",
     },
     "en": {
         # Sidebar
@@ -123,6 +139,22 @@ Let AI become your Chief Quality Engineer.
         "admin_login_btn": "Login",
         "admin_back": "Back to User Login",
         "admin_error": "Invalid username or password",
+        
+        # Admin panel content
+        "total_users": "Total Users",
+        "pro_users": "Pro Users",
+        "free_users": "Free Users",
+        "user_list": "User List",
+        "subscription_mgmt": "Subscription Management",
+        "select_user": "Select User",
+        "set_subscription": "Set Subscription",
+        "months": "Months",
+        "update_btn": "Update Subscription",
+        "exit_admin": "Exit Admin Mode",
+        "email_col": "Email",
+        "subscription_col": "Subscription",
+        "trials_left": "Trials Left",
+        "expires_col": "Expires",
     }
 }
 
@@ -247,72 +279,119 @@ def render_sidebar():
 
 # ==================== 右上角按钮 ====================
 def render_top_buttons():
-    # 自定义 CSS 让按钮更突出
+    # 自定义 CSS - 使用更具体的选择器确保红底白字生效
     st.markdown("""
     <style>
-    /* 红底白字按钮样式 */
-    div[data-testid="column"]:nth-of-type(2) button,
-    div[data-testid="column"]:nth-of-type(3) button {
-        background-color: #dc3545 !important;
-        color: white !important;
-        border: none !important;
-        font-weight: 600 !important;
-        border-radius: 8px !important;
-        padding: 8px 16px !important;
-        transition: all 0.3s ease !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-    }
-    div[data-testid="column"]:nth-of-type(2) button:hover,
-    div[data-testid="column"]:nth-of-type(3) button:hover {
-        background-color: #c82333 !important;
-        transform: translateY(-1px) !important;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
-    }
-    /* 齿轮按钮样式 */
-    div[data-testid="column"]:nth-of-type(4) button {
-        background-color: #6c757d !important;
-        color: white !important;
-        font-weight: 600 !important;
-        border-radius: 8px !important;
-    }
-    div[data-testid="column"]:nth-of-type(4) button:hover {
-        background-color: #5a6268 !important;
-    }
-    /* 输入框变大 */
-    div[data-testid="stTextInput"] input {
-        font-size: 18px !important;
-        padding: 12px 16px !important;
-        height: auto !important;
-        border-radius: 10px !important;
-    }
-    /* 按钮变大 */
+    /* 全局按钮样式 - 确保中文和English按钮是红底白字 */
     .stButton button {
+        border-radius: 8px !important;
         font-size: 16px !important;
         padding: 10px 20px !important;
     }
+    
+    /* 针对中文和English按钮的特定样式 - 使用 data-testid 和 key */
+    button[kind="secondary"] {
+        background-color: #dc3545 !important;
+        color: white !important;
+        border: none !important;
+    }
+    
+    /* 更通用的方式 - 通过按钮文本内容定位 */
+    .stButton button:has(> div:contains("中文")),
+    .stButton button:has(> div:contains("English")) {
+        background-color: #dc3545 !important;
+        color: white !important;
+    }
+    
+    /* 输入框变大 */
+    div[data-testid="stTextInput"] input {
+        font-size: 20px !important;
+        padding: 14px 18px !important;
+        height: auto !important;
+        border-radius: 12px !important;
+        border: 1px solid #ddd !important;
+    }
+    
+    /* 输入框聚焦效果 */
+    div[data-testid="stTextInput"] input:focus {
+        border-color: #dc3545 !important;
+        box-shadow: 0 0 0 2px rgba(220,53,69,0.2) !important;
+    }
+    
     /* 主标题字体 */
     h1 {
-        font-size: 48px !important;
+        font-size: 52px !important;
+        font-weight: 600 !important;
     }
     h2 {
-        font-size: 32px !important;
+        font-size: 36px !important;
+    }
+    h3 {
+        font-size: 24px !important;
+    }
+    
+    /* 登录按钮样式 */
+    .stButton button[data-testid="baseButton-primary"] {
+        background-color: #dc3545 !important;
+        font-size: 18px !important;
+        padding: 12px 24px !important;
+    }
+    
+    /* 卡片样式 */
+    div[data-testid="stContainer"] {
+        border-radius: 16px !important;
+    }
+    
+    /* 指标卡片样式 */
+    div[data-testid="stMetric"] {
+        background-color: #f8f9fa !important;
+        border-radius: 12px !important;
+        padding: 16px !important;
+        text-align: center !important;
     }
     </style>
+    
+    <script>
+    // 简单的JavaScript辅助（Streamlit会自动处理）
+    </script>
     """, unsafe_allow_html=True)
     
+    # 使用 columns 布局
     col1, col2, col3, col4, col5 = st.columns([8, 1.2, 1.2, 1.2, 1])
+    
     with col2:
-        if st.button(t()["chinese"], key="zh_btn", use_container_width=True,
-                     disabled=st.session_state.lang == "zh"):
-            st.session_state.lang = "zh"
-            st.rerun()
+        # 使用 st.markdown 包装按钮，确保样式
+        st.markdown("""
+        <style>
+        .lang-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            width: 100%;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+        }
+        .lang-btn:hover {
+            background-color: #c82333;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        if st.button(t()["chinese"], key="zh_btn", use_container_width=True):
+            if st.session_state.lang != "zh":
+                st.session_state.lang = "zh"
+                st.rerun()
+    
     with col3:
-        if st.button(t()["english"], key="en_btn", use_container_width=True,
-                     disabled=st.session_state.lang == "en"):
-            st.session_state.lang = "en"
-            st.rerun()
+        if st.button(t()["english"], key="en_btn", use_container_width=True):
+            if st.session_state.lang != "en":
+                st.session_state.lang = "en"
+                st.rerun()
+    
     with col4:
-        # 齿轮按钮 - 点击显示管理员登录
         if st.button("⚙️", key="gear_btn", help="管理员登录", use_container_width=True):
             st.session_state.show_admin_login = True
             st.rerun()
@@ -332,8 +411,9 @@ def render_admin_login_form():
                 if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
                     st.session_state.admin_mode = True
                     st.session_state.show_admin_login = False
-                    # 可选：设置一个管理员标记
-                    st.session_state.is_admin = True
+                    st.session_state.authenticated = True  # 管理员也需要登录状态
+                    st.session_state.user_email = "admin@techlife.com"
+                    st.session_state.user_id = "admin"
                     st.rerun()
                 else:
                     st.error(t()["admin_error"])
@@ -507,63 +587,98 @@ def render_main_app():
                         else:
                             st.error(msg)
 
-# ==================== 管理员面板 ====================
+# ==================== 管理员面板（完整功能）====================
 def render_admin_panel():
-    col1, col2, col3 = st.columns([1, 3, 1])
+    st.markdown(f"## ⚙️ {t()['admin_panel']}")
+    
+    # 获取所有用户数据
+    users = supabase.table("profiles").select("*", count="exact").execute()
+    pro_users = supabase.table("profiles").select("*", count="exact")\
+        .eq("subscription_tier", "pro").execute()
+    
+    # 统计数据卡片
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric(t()["total_users"], users.count)
     with col2:
-        st.markdown("## ⚙️ 管理员面板")
-        
-        # 统计数据
-        users = supabase.table("profiles").select("*", count="exact").execute()
-        pro_users = supabase.table("profiles").select("*", count="exact")\
-            .eq("subscription_tier", "pro").execute()
-        
-        col_stat1, col_stat2, col_stat3 = st.columns(3)
-        with col_stat1:
-            st.metric("总用户数", users.count)
-        with col_stat2:
-            st.metric("专业版用户", pro_users.count)
-        with col_stat3:
-            st.metric("免费版用户", users.count - pro_users.count)
-        
-        st.markdown("---")
-        
-        # 用户列表
-        st.subheader("用户列表")
+        st.metric(t()["pro_users"], pro_users.count)
+    with col3:
+        st.metric(t()["free_users"], users.count - pro_users.count)
+    with col4:
+        # 计算总收入（假设专业版每月29美元）
+        total_revenue = pro_users.count * 29
+        st.metric("月收入 (USD)", f"${total_revenue}")
+    
+    st.markdown("---")
+    
+    # 用户列表
+    st.subheader(t()["user_list"])
+    
+    if users.data:
         user_data = []
         for user in users.data:
             user_data.append({
-                "邮箱": user.get("email"),
-                "订阅": user.get("subscription_tier"),
-                "剩余次数": user.get("free_trials_remaining", 10),
-                "到期时间": (user.get("subscription_expires_at") or "")[:10] if user.get("subscription_expires_at") else "-"
+                t()["email_col"]: user.get("email"),
+                t()["subscription_col"]: "💎 Pro" if user.get("subscription_tier") == "pro" else "🔒 Free",
+                t()["trials_left"]: user.get("free_trials_remaining", 10),
+                t()["expires_col"]: (user.get("subscription_expires_at") or "")[:10] if user.get("subscription_expires_at") else "-",
+                "user_id": user.get("id")
             })
-        st.dataframe(user_data, use_container_width=True)
         
-        st.markdown("---")
+        # 显示用户表格
+        st.dataframe(
+            [{k: v for k, v in u.items() if k != "user_id"} for u in user_data],
+            use_container_width=True
+        )
+    else:
+        st.info("暂无用户数据")
+    
+    st.markdown("---")
+    
+    # 订阅管理
+    st.subheader(t()["subscription_mgmt"])
+    
+    if users.data:
+        # 用户选择下拉框
+        user_options = [f"{u.get('email')} ({u.get('subscription_tier')})" for u in users.data]
+        selected_user_display = st.selectbox(t()["select_user"], user_options)
         
-        # 手动调整订阅
-        st.subheader("订阅管理")
-        selected_email = st.selectbox("选择用户", [u.get("email") for u in users.data])
-        new_tier = st.selectbox("设置订阅", ["free", "pro"])
+        # 提取选中的用户ID
+        selected_email = selected_user_display.split(" ")[0] if selected_user_display else None
         
-        if st.button("更新订阅"):
-            user = supabase.table("profiles").select("id").eq("email", selected_email).execute()
-            if user.data:
-                expires_at = None
-                if new_tier == "pro":
-                    expires_at = (datetime.now() + timedelta(days=30)).isoformat()
-                supabase.table("profiles").update({
-                    "subscription_tier": new_tier,
-                    "subscription_expires_at": expires_at
-                }).eq("id", user.data[0]["id"]).execute()
-                st.success("已更新")
-                st.rerun()
+        # 当前订阅状态
+        current_user = next((u for u in users.data if u.get("email") == selected_email), None)
+        if current_user:
+            st.info(f"当前订阅: **{current_user.get('subscription_tier')}** | 剩余次数: **{current_user.get('free_trials_remaining', 10)}**")
         
-        if st.button("退出管理员模式"):
-            st.session_state.admin_mode = False
-            st.session_state.is_admin = False
-            st.rerun()
+        col_sub1, col_sub2, col_sub3 = st.columns(3)
+        with col_sub1:
+            new_tier = st.selectbox(t()["set_subscription"], ["free", "pro"])
+        with col_sub2:
+            months = st.number_input(t()["months"], min_value=1, max_value=12, value=1)
+        with col_sub3:
+            if st.button(t()["update_btn"], use_container_width=True):
+                if selected_email:
+                    user = supabase.table("profiles").select("id").eq("email", selected_email).execute()
+                    if user.data:
+                        expires_at = None
+                        if new_tier == "pro":
+                            expires_at = (datetime.now() + timedelta(days=30 * months)).isoformat()
+                        supabase.table("profiles").update({
+                            "subscription_tier": new_tier,
+                            "subscription_expires_at": expires_at,
+                            "free_trials_remaining": 10 if new_tier == "free" else 999
+                        }).eq("id", user.data[0]["id"]).execute()
+                        st.success(f"已更新 {selected_email} 的订阅为 {new_tier}")
+                        st.rerun()
+    
+    st.markdown("---")
+    
+    # 退出管理员模式
+    if st.button(t()["exit_admin"], use_container_width=True):
+        st.session_state.admin_mode = False
+        st.session_state.authenticated = False
+        st.rerun()
 
 # ==================== 主程序 ====================
 def main():
