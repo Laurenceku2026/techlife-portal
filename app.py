@@ -93,6 +93,9 @@ TEXTS = {
         "register_success": "注册成功！请登录",
         "email_exists": "该邮箱已注册，请直接登录",
         "open_new_tab": "🔗 点击按钮将在新标签页中打开应用",
+        "test_consume": "手动消耗1次",
+        "test_view": "查看当前次数",
+        "test_refresh": "刷新页面",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -164,31 +167,21 @@ Let AI become your Chief Quality Engineer.
         "register_success": "Registration successful! Please login.",
         "email_exists": "Email already registered. Please login.",
         "open_new_tab": "🔗 Click button to open app in new tab",
+        "test_consume": "Consume 1",
+        "test_view": "View Current",
+        "test_refresh": "Refresh",
     }
 }
 
 # ==================== Supabase 初始化 ====================
 @st.cache_resource
 def init_supabase():
-    """初始化 Supabase 客户端（使用 anon key）"""
     try:
         return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     except Exception as e:
         return None
 
-@st.cache_resource
-def init_supabase_admin():
-    """初始化 Supabase 管理客户端（使用 service role key）"""
-    try:
-        service_key = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", "")
-        if service_key:
-            return create_client(st.secrets["SUPABASE_URL"], service_key)
-    except Exception:
-        pass
-    return None
-
 supabase = init_supabase()
-supabase_admin = init_supabase_admin()
 
 # ==================== Session State ====================
 if "lang" not in st.session_state:
@@ -213,7 +206,6 @@ def t():
 
 # ==================== 辅助函数 ====================
 def get_user_profile(user_id: str):
-    """获取用户资料（订阅类型、剩余次数）"""
     if not supabase or not user_id or user_id == "admin":
         return {"subscription_tier": "free", "free_trials_remaining": 30}
     try:
@@ -228,7 +220,6 @@ def get_user_profile(user_id: str):
     return {"subscription_tier": "free", "free_trials_remaining": 30}
 
 def get_user_total_usage(user_id: str):
-    """获取用户总使用次数"""
     if not supabase or not user_id or user_id == "admin":
         return 0
     try:
@@ -242,7 +233,6 @@ def get_user_total_usage(user_id: str):
 
 # ==================== UI 组件 ====================
 def render_sidebar():
-    """渲染侧边栏"""
     with st.sidebar:
         st.title(t()["sidebar_title"])
         st.subheader(t()["about_header"])
@@ -280,7 +270,6 @@ def render_sidebar():
                 st.rerun()
 
 def render_top_buttons():
-    """渲染右上角语言切换和管理员按钮"""
     col1, col2, col3, col4, col5 = st.columns([8, 1.2, 1.2, 1.2, 1])
     with col2:
         if st.button(t()["chinese"], key="zh_btn", use_container_width=True):
@@ -298,7 +287,6 @@ def render_top_buttons():
             st.rerun()
 
 def render_admin_login_form():
-    """管理员登录表单"""
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(f"<h2 style='text-align: center;'>{t()['admin_login_title']}</h2>", unsafe_allow_html=True)
@@ -323,7 +311,6 @@ def render_admin_login_form():
             st.rerun()
 
 def render_login_form():
-    """用户登录表单"""
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         st.markdown(f"<h1 style='text-align: center;'>{t()['main_title']}</h1>", unsafe_allow_html=True)
@@ -361,7 +348,6 @@ def render_login_form():
                 st.rerun()
 
 def render_register_form():
-    """用户注册表单"""
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(f"<h2 style='text-align: center;'>{t()['register_title']}</h2>", unsafe_allow_html=True)
@@ -399,7 +385,6 @@ def render_register_form():
             st.rerun()
 
 def render_reset_password_form():
-    """忘记密码表单"""
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(f"<h2 style='text-align: center;'>{t()['forgot_password']}</h2>", unsafe_allow_html=True)
@@ -411,36 +396,6 @@ def render_reset_password_form():
             st.rerun()
 
 def render_main_app():
-    # 测试按钮 - 放在应用导航之前
-st.markdown("---")
-st.subheader("🧪 测试区（管理员专用）")
-
-col_test1, col_test2, col_test3 = st.columns(3)
-with col_test1:
-    if st.button("手动消耗1次", key="test_consume"):
-        if supabase:
-            try:
-                # 获取当前次数
-                resp = supabase.table("profiles").select("free_trials_remaining").eq("id", st.session_state.user_id).execute()
-                current = resp.data[0].get("free_trials_remaining", 999) if resp.data else 999
-                # 减1
-                supabase.table("profiles").update({"free_trials_remaining": current - 1}).eq("id", st.session_state.user_id).execute()
-                st.success(f"✅ 已从 {current} 减到 {current - 1}")
-                st.rerun()
-            except Exception as e:
-                st.error(f"错误: {e}")
-
-with col_test2:
-    if st.button("查看当前次数", key="test_view"):
-        resp = supabase.table("profiles").select("free_trials_remaining").eq("id", st.session_state.user_id).execute()
-        if resp.data:
-            st.info(f"当前剩余次数: {resp.data[0].get('free_trials_remaining')}")
-
-with col_test3:
-    if st.button("刷新页面", key="test_refresh"):
-        st.rerun()
-
-       """登录后的主应用界面（应用导航）"""
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         profile = get_user_profile(st.session_state.user_id)
@@ -461,6 +416,43 @@ with col_test3:
                 st.metric(t()["free_trial"], "∞")
         with col_sub3:
             st.metric(t()["total_usage"], total_usage)
+        
+        # ==================== 测试区 ====================
+        st.markdown("---")
+        st.markdown("### 🧪 测试区")
+        col_test1, col_test2, col_test3 = st.columns(3)
+        with col_test1:
+            if st.button(t()["test_consume"], key="test_consume_btn", use_container_width=True):
+                if supabase and st.session_state.user_id != "admin":
+                    try:
+                        resp = supabase.table("profiles").select("free_trials_remaining").eq("id", st.session_state.user_id).execute()
+                        if resp.data:
+                            current = resp.data[0].get("free_trials_remaining", 30)
+                            supabase.table("profiles").update({"free_trials_remaining": current - 1}).eq("id", st.session_state.user_id).execute()
+                            st.success(f"✅ 已从 {current} 减到 {current - 1}")
+                            st.rerun()
+                        else:
+                            st.error("用户数据不存在")
+                    except Exception as e:
+                        st.error(f"错误: {e}")
+                else:
+                    st.warning("无法测试")
+        with col_test2:
+            if st.button(t()["test_view"], key="test_view_btn", use_container_width=True):
+                if supabase and st.session_state.user_id != "admin":
+                    try:
+                        resp = supabase.table("profiles").select("free_trials_remaining").eq("id", st.session_state.user_id).execute()
+                        if resp.data:
+                            st.info(f"当前剩余次数: {resp.data[0].get('free_trials_remaining')}")
+                        else:
+                            st.error("用户数据不存在")
+                    except Exception as e:
+                        st.error(f"错误: {e}")
+                else:
+                    st.warning("管理员账号")
+        with col_test3:
+            if st.button(t()["test_refresh"], key="test_refresh_btn", use_container_width=True):
+                st.rerun()
         
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
@@ -497,7 +489,6 @@ with col_test3:
                     st.caption(desc)
                 with col_btn:
                     lang_param = "zh" if st.session_state.lang == "zh" else "en"
-                    # 传递用户信息和剩余次数到子应用
                     full_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}&lang={lang_param}&trials_left={remaining}"
                     
                     button_html = f'''
@@ -517,15 +508,12 @@ with col_test3:
                     st.markdown(button_html, unsafe_allow_html=True)
 
 def render_admin_panel():
-    """管理员面板"""
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     
-    # 使用 admin client 或普通 client
-    db = supabase_admin if supabase_admin else supabase
+    db = supabase
     
     if not db:
         st.warning("数据库连接失败")
-        st.info("请在 Supabase Project Settings → API 中获取 Service Role Key 并添加到 Secrets")
         if st.button(t()["exit_admin"], use_container_width=True):
             st.session_state.admin_mode = False
             st.session_state.authenticated = False
@@ -597,7 +585,6 @@ def render_admin_panel():
         
     except Exception as e:
         st.warning(f"无法获取数据: {e}")
-        st.info("请在 Supabase Project Settings → API 中获取 Service Role Key 并添加到 Secrets")
     
     st.markdown("---")
     if st.button(t()["exit_admin"], use_container_width=True):
@@ -605,7 +592,6 @@ def render_admin_panel():
         st.session_state.authenticated = False
         st.rerun()
 
-# ==================== 主程序 ====================
 def main():
     render_sidebar()
     render_top_buttons()
