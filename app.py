@@ -1,187 +1,320 @@
-import streamlit as st
-
-# --- 1. 页面配置 ---
-st.set_page_config(page_title="TechLife Portal", layout="wide")
-
-# --- 2. 初始化 Session State ---
-if 'language' not in st.session_state:
-    st.session_state.language = 'zh'
-
-# --- 3. 多语言字典 ---
-translations = {
-    "zh": {
-        # 侧边栏
-        "sidebar_title": "TechLife Suite",
-        "about_header": "📘 关于系统",
-        "about_text": """
-        **TechLife Suite** 是专为研发工程师打造的 **AI 赋能 DFSS（六西格玛设计）** 平台。
-
-        我们致力于通过人工智能技术，简化复杂的工程设计流程，帮助团队实现：
-
-        - **智能需求分析**：快速拆解客户之声 (VOC)。
-        - **自动化风险评估**：AI 辅助生成 DFMEA。
-        - **参数优化设计**：利用算法寻找最优容差。
-
-        让 AI 成为您的首席质量工程师。
-        """,
-        "contact_header": "📧 联系我们",
-        "email_label": "邮箱: Techlife2027@gmail.com",
-
-        # 主界面
-        "main_title": "TechLife Suite 门户",
-        "main_subtitle": "一站式工程研发 AI 工具集",
-        "email_placeholder": "请输入邮箱",
-        "password_placeholder": "请输入密码",
-        "login_btn": "登 录",
-        "register_btn": "注 册"
-    },
-    "en": {
-        # 侧边栏
-        "sidebar_title": "TechLife Suite",
-        "about_header": "📘 About System",
-        "about_text": """
-        **TechLife Suite** is a platform designed for R&D engineers, featuring **AI-empowered DFSS (Design for Six Sigma)**.
-
-        We are committed to simplifying complex engineering design processes through AI, helping teams achieve:
-
-        - **Intelligent Requirement Analysis**: Rapidly deconstruct Voice of Customer (VOC).
-        - **Automated Risk Assessment**: AI-assisted DFMEA generation.
-        - **Parameter Optimization**: Find optimal tolerances using algorithms.
-
-        Let AI become your Chief Quality Engineer.
-        """,
-        "contact_header": "📧 Contact Us",
-        "email_label": "Email: Techlife2027@gmail.com",
-
-        # 主界面
-        "main_title": "TechLife Suite Portal",
-        "main_subtitle": "One-stop AI Toolkit for R&D Engineering",
-        "email_placeholder": "Please enter email",
-        "password_placeholder": "Please enter password",
-        "login_btn": "LOG IN",
-        "register_btn": "REGISTER"
-    }
-}
-
-# 获取当前语言包
-t = translations[st.session_state.language]
-
-# --- 4. 自定义 CSS (大字体 + 右上角布局修复) ---
-st.markdown("""
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TechLife Suite 门户</title>
     <style>
-    /* 放大输入框内的文字和占位符 */
-    .stTextInput > div > div > input,
-    .stPasswordInput > div > div > input {
-        font-size: 18px !important;
-        height: 50px !important;
-    }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            min-height: 100vh;
+            background-color: #f5f5f5;
+        }
 
-    /* 放大输入框的标签 */
-    .stTextInput > label,
-    .stPasswordInput > label {
-        font-size: 18px !important;
-        font-weight: 600;
-    }
+        /* 左侧边栏 */
+        .sidebar {
+            width: 320px;
+            background-color: #ffffff;
+            padding: 30px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: fixed;
+            height: 100%;
+            overflow-y: auto;
+        }
 
-    /* 按钮样式 */
-    .stButton > button {
-        height: 50px !important;
-        font-size: 18px !important;
-        width: 100%;
-    }
+        .logo-area {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+        }
+        .logo-area::before {
+            content: '';
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            background-color: #007AFF; /* 蓝色图标示意 */
+            margin-right: 10px;
+        }
 
-    /* 修复右上角布局：确保内容右对齐 */
-    .top-right-container {
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 20px;
-    }
+        .info-section h3 {
+            font-size: 18px;
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #333;
+            display: flex;
+            align-items: center;
+        }
+        .info-section h3::before {
+            content: '';
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            background-color: #007AFF;
+            margin-right: 8px;
+        }
 
-    /* 语言按钮样式 */
-    .lang-btn {
-        border: 1px solid #ccc;
-        background-color: white;
-        color: black;
-        padding: 5px 15px;
-        border-radius: 5px;
-        font-size: 14px;
-    }
+        .info-section p {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #555;
+            text-align: justify;
+        }
 
-    .lang-btn.active {
-        background-color: #FF4B4B;
-        color: white;
-        border-color: #FF4B4B;
-        font-weight: bold;
-    }
+        .info-section ul {
+            padding-left: 20px;
+            font-size: 14px;
+            color: #555;
+        }
+        .info-section li {
+            margin-bottom: 8px;
+        }
+
+        .contact-section {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .contact-section h3 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        .contact-section h3::before {
+            content: '';
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 1px solid #333;
+            margin-right: 8px;
+        }
+        .contact-section p {
+            font-size: 13px;
+            color: #666;
+            margin: 0;
+        }
+        .contact-section a {
+            color: #007AFF;
+            text-decoration: none;
+        }
+
+        /* 右侧主内容区 */
+        .main-content {
+            flex: 1;
+            margin-left: 320px; /* 与sidebar宽度一致 */
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        /* 顶部语言切换 */
+        .top-right-controls {
+            position: absolute;
+            top: 30px;
+            right: 40px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .lang-btn {
+            background-color: #FF0000; /* 红色背景 */
+            color: white; /* 白色字体 */
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .lang-btn:hover {
+            opacity: 0.9;
+        }
+
+        .header-text {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .header-text h1 {
+            font-size: 36px;
+            font-weight: 800;
+            color: #111;
+            margin: 0 0 10px 0;
+        }
+        .header-text p {
+            font-size: 16px;
+            color: #666;
+            margin: 0;
+        }
+
+        /* 登录/注册框 */
+        .auth-card {
+            background-color: #ffffff;
+            width: 400px;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            border: 1px solid #e0e0e0;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+        .input-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #333; /* 黑色文字 */
+            margin-bottom: 8px;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccc; /* 黑色/灰色边框 */
+            border-radius: 6px;
+            font-size: 15px;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .input-group input:focus {
+            border-color: #007AFF;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 12px;
+            top: 38px;
+            cursor: pointer;
+            color: #999;
+            font-size: 14px;
+        }
+
+        /* 按钮区域 */
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 15px; /* 按钮间距 */
+            margin-top: 10px;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px; /* 大字体 */
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            text-align: center;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        .btn-primary {
+            background-color: #333; /* 登录按钮：黑色 */
+            color: white;
+        }
+
+        .btn-secondary {
+            background-color: #e0e0e0; /* 注册按钮：浅灰底色 */
+            color: #333; /* 黑色文字 */
+        }
+
+        /* 响应式 */
+        @media (max-width: 900px) {
+            .sidebar {
+                display: none; /* 移动端隐藏侧边栏 */
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 20px;
+            }
+            .auth-card {
+                width: 100%;
+                max-width: 350px;
+            }
+        }
     </style>
-    """, unsafe_allow_html=True)
+</head>
+<body>
 
-# --- 5. 顶部右上角控制栏 (语言 + 齿轮) ---
-# 使用列布局将内容推到最右边
-col_empty, col_controls = st.columns([3, 1]) # 3:1 的比例，把控件挤到右边
+    <!-- 左侧栏 -->
+    <div class="sidebar">
+        <div>
+            <div class="logo-area">TechLife Suite</div>
 
-with col_controls:
-    # 使用容器确保内部元素右对齐
-    top_container = st.container()
-    with top_container:
-        # 这里使用 HTML/CSS 来精确控制按钮样式和排列
-        btn_zh_class = "lang-btn active" if st.session_state.language == 'zh' else "lang-btn"
-        btn_en_class = "lang-btn active" if st.session_state.language == 'en' else "lang-btn"
+            <div class="info-section">
+                <h3>关于系统</h3>
+                <p>TechLife Suite 是专为研发工程师打造的 AI 辅助 DFX（大设计协同）平台。</p>
+                <p>我们致力于通过人工智能技术，简化复杂的工程设计流程，帮助团队实现：</p>
+                <ul>
+                    <li>智能需求分析：快速拆解客户需求与 QCD。</li>
+                    <li>自动初案评估：AI 辅助生成 DFX 报告。</li>
+                    <li>参数优化设计：利用算法寻找最优方案。</li>
+                </ul>
+                <p>让 AI 成为您的智能研发工程师。</p>
+            </div>
+        </div>
 
-        # 创建两列来放按钮，避免 Streamlit 按钮默认的垂直堆叠问题
-        c1, c2, c3 = st.columns([1, 1, 0.5])
-        with c1:
-            if st.button("中文", key="btn_zh"):
-                st.session_state.language = 'zh'
-                st.rerun()
-        with c2:
-            if st.button("English", key="btn_en"):
-                st.session_state.language = 'en'
-                st.rerun()
-        with c3:
-            # 齿轮图标作为管理员入口
-            st.markdown("<div style='padding-top:10px'>⚙️</div>", unsafe_allow_html=True)
-            # 如果需要齿轮可点击，可以使用下面这行代替上面那行：
-            # if st.button("⚙️", key="btn_admin"): pass
+        <div class="contact-section">
+            <h3>联系我们</h3>
+            <p>邮箱: <a href="mailto:Techlife2022@gmail.com">Techlife2022@gmail.com</a></p>
+        </div>
+    </div>
 
-st.markdown("---") # 分隔线
+    <!-- 右侧主区域 -->
+    <div class="main-content">
 
-# --- 6. 侧边栏内容 ---
-with st.sidebar:
-    st.title(t["sidebar_title"])
+        <!-- 顶部语言切换 -->
+        <div class="top-right-controls">
+            <button class="lang-btn">中文</button>
+            <button class="lang-btn">English</button>
+        </div>
 
-    st.subheader(t["about_header"])
-    st.markdown(t["about_text"])
+        <!-- 标题 -->
+        <div class="header-text">
+            <h1>TechLife Suite 门户</h1>
+            <p>一站式工程研发 AI 工具箱</p>
+        </div>
 
-    st.divider()
+        <!-- 登录注册卡片 -->
+        <div class="auth-card">
+            <form>
+                <div class="input-group">
+                    <label for="username">请输入账号</label>
+                    <input type="text" id="username" placeholder="">
+                </div>
 
-    st.subheader(t["contact_header"])
-    st.markdown(t["email_label"])
+                <div class="input-group" style="position: relative;">
+                    <label for="password">请输入密码</label>
+                    <input type="password" id="password" placeholder="">
+                    <!-- 模拟的小眼睛图标 -->
+                    <span class="password-toggle">👁️</span>
+                </div>
 
-# --- 7. 主界面登录框 ---
-# 居中显示
-c1, c2, c3 = st.columns([1, 2, 1]) # 中间列宽为2，两边为1，实现居中
+                <!-- 两个按钮都在框内 -->
+                <div class="button-group">
+                    <button type="button" class="btn btn-primary">登录</button>
+                    <button type="button" class="btn btn-secondary">注册</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
-with c2:
-    st.markdown(f"<h1 style='text-align: center;'>{t['main_title']}</h1>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align: center; color: grey;'>{t['main_subtitle']}</p>", unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True) # 间距
-
-    with st.form(key='login_form'):
-        email = st.text_input(t["email_placeholder"], placeholder="")
-        password = st.text_input(t["password_placeholder"], type="password", placeholder="")
-        submit_button = st.form_submit_button(label=t["login_btn"])
-
-        if submit_button:
-            # 这里添加登录逻辑
-            st.success("登录功能待实现")
-
-    # 注册按钮单独放在下面，或者也可以用 form 里的，看设计需求
-    # 这里为了美观，放在 form 外面居中
-    c_reg_1, c_reg_2, c_reg_3 = st.columns([1, 2, 1])
-    with c_reg_2:
-        if st.button(t["register_btn"]):
-            st.info("注册功能待实现")
+</body>
+</html>
