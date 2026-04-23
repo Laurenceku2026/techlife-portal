@@ -1,159 +1,113 @@
 import streamlit as st
 from supabase import create_client, Client
 
-# --- 1. 初始化配置 ---
-st.set_page_config(page_title="TechLife Portal", layout="wide")
+# --- 1. 页面配置 ---
+st.set_page_config(page_title="TechLife Portal", layout="centered")
 
-# --- 2. 模拟 Supabase 连接 (请确保在 Streamlit Secrets 中配置了这些) ---
-# 这里为了演示不报错，先注释掉实际的连接，你需要确保你的 secrets 配置正确
-# SUPABASE_URL = st.secrets["SUPABASE_URL"]
-# SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-# supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# --- 2. 侧边栏 (Sidebar) ---
+with st.sidebar:
+    # 标题
+    st.header("🚀 TechLife Suite")
+
+    # 关于系统介绍
+    st.subheader("📘 关于系统")
+    st.markdown("""
+    **TechLife Suite** 是专为研发工程师打造的 **AI 赋能 DFSS（六西格玛设计）** 平台。
+    
+    我们致力于通过人工智能技术，简化复杂的工程设计流程，帮助团队实现：
+    
+    - **智能需求分析**：快速拆解客户之声 (VOC)。
+    - **自动化风险评估**：AI 辅助生成 DFMEA。
+    - **参数优化设计**：利用算法寻找最优容差。
+    
+    让 AI 成为您的首席质量工程师。
+    """)
+
+    st.divider() # 分割线
+
+    # 工具列表（占位）
+    st.caption("可用工具:")
+    st.markdown("- 🛠️ VOC 分析助手")
+    st.markdown("- 🛠️ 智能 FMEA 生成器")
+    st.markdown("- 🛠️ 容差设计计算器")
+
+    st.divider()
+
+    # 联系方式
+    st.markdown("#### 📧 联系我们")
+    st.markdown("Techlife2027@gmail.com")
 
 # --- 3. 多语言字典 ---
 translations = {
     "zh": {
-        "app_title": "TechLife Suite 门户",
-        "subtitle": "一站式工程研发 AI 工具集",
-        "login": "登录",
-        "register": "注册",
-        "logout": "退出登录",
-        "admin": "管理员入口",
-        "language_toggle": "English",
-        "email": "邮箱",
-        "password": "密码",
+        "welcome_title": "欢迎使用 TechLife 门户",
+        "welcome_text": "请登录以访问您的 AI 工程工具。",
+        "login_btn": "登录",
+        "register_btn": "注册",
+        "email_label": "邮箱",
+        "password_label": "密码",
     },
     "en": {
-        "app_title": "TechLife Suite Portal",
-        "subtitle": "One-stop AI Toolkit for R&D",
-        "login": "Login",
-        "register": "Register",
-        "logout": "Logout",
-        "admin": "Admin Panel",
-        "language_toggle": "中文",
-        "email": "Email",
-        "password": "Password",
+        "welcome_title": "Welcome to TechLife Portal",
+        "welcome_text": "Please login to access your AI engineering tools.",
+        "login_btn": "Login",
+        "register_btn": "Register",
+        "email_label": "Email",
+        "password_label": "Password",
     }
 }
 
-# --- 4. 初始化 Session State ---
+# --- 4. 语言切换逻辑 ---
 if 'language' not in st.session_state:
     st.session_state.language = 'zh'
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'user_email' not in st.session_state:
-    st.session_state.user_email = ""
 
-# --- 5. 页面切换逻辑 ---
-def switch_language():
+def toggle_language():
+    st.session_state.language = 'en' if st.session_state.language == 'zh' else 'zh'
+
+# 在侧边栏或顶部添加语言切换（这里放在侧边栏底部比较整洁）
+with st.sidebar:
+    st.divider()
     if st.session_state.language == 'zh':
-        st.session_state.language = 'en'
+        st.button("🇺🇸 English", on_click=toggle_language, use_container_width=True)
     else:
-        st.session_state.language = 'zh'
-    # 强制重跑以更新界面
-    st.rerun()
+        st.button("🇨🇳 中文", on_click=toggle_language, use_container_width=True)
 
-def go_to_admin():
-    st.session_state.page = "admin"
-    st.rerun()
+# 获取当前语言文本
+t = translations[st.session_state.language]
 
-def go_to_home():
-    st.session_state.page = "home"
-    st.rerun()
+# --- 5. 主界面布局 (Main) ---
+# 使用列来居中内容，但不分两列显示业务逻辑
+col1, col2, col3 = st.columns([1, 2, 1]) # 中间列宽，两边窄，实现居中效果
 
-def login_success(email):
-    st.session_state.logged_in = True
-    st.session_state.user_email = email
-    st.session_state.page = "home"
-    st.rerun()
+with col2:
+    st.title(t["welcome_title"])
+    st.write(t["welcome_text"])
+    
+    st.markdown("---")
 
-def logout():
-    st.session_state.logged_in = False
-    st.session_state.user_email = ""
-    st.session_state.page = "home"
-    st.rerun()
+    # 登录表单
+    with st.form("login_form"):
+        email = st.text_input(t["email_label"])
+        password = st.text_input(t["password_label"], type="password")
+        
+        # 两个大按钮并排
+        c1, c2 = st.columns(2)
+        with c1:
+            submit_login = st.form_submit_button(t["login_btn"], type="primary", use_container_width=True)
+        with c2:
+            submit_register = st.form_submit_button(t["register_btn"], use_container_width=True)
 
-# --- 6. 页面组件 ---
+    # --- 6. 简单的逻辑模拟 ---
+    if submit_login:
+        if email and password:
+            st.success(f"模拟登录成功: {email}")
+            # 这里后续接入 Supabase 登录逻辑
+        else:
+            st.warning("请输入邮箱和密码")
 
-def show_admin_panel():
-    t = translations[st.session_state.language]
-    st.header(f"🛠️ {t['admin']}")
-    st.write("这里可以管理用户、查看订阅状态和充值记录。")
-    st.button("返回主页", on_click=go_to_home)
-
-def show_home():
-    t = translations[st.session_state.language]
-
-    # --- 顶部导航栏 (关键修改部分) ---
-    # 创建一个顶部容器
-    header_container = st.container()
-    with header_container:
-        # 使用列布局将内容推到最右边
-        # col1 占据大部分宽度，col2 和 col3 占据右侧空间
-        h_col1, h_col2, h_col3 = st.columns([10, 1, 1])
-
-        with h_col2:
-            # 语言切换按钮
-            st.button(
-                t['language_toggle'],
-                on_click=switch_language,
-                use_container_width=True
-            )
-
-        with h_col3:
-            # 管理员入口 (齿轮图标)
-            if st.session_state.logged_in:
-                 # 这里可以加一个判断，比如只有特定邮箱才能看到管理员入口
-                 # if st.session_state.user_email == "admin@techlife.com":
-                st.button(
-                    "⚙️",
-                    on_click=go_to_admin,
-                    help=t['admin'],
-                    use_container_width=True
-                )
-
-    st.markdown("---") # 分割线
-
-    # --- 主体内容 ---
-    if not st.session_state.logged_in:
-        # 登录/注册表单
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            st.header(t['login'])
-            email = st.text_input(t['email'], key="login_email")
-            password = st.text_input(t['password'], type="password", key="login_pwd")
-            if st.button(t['login']):
-                # 这里模拟登录成功
-                # 实际应调用 supabase.auth.sign_in_with_password
-                login_success(email)
-
-        with col2:
-            st.header(t['register'])
-            r_email = st.text_input(t['email'], key="reg_email")
-            r_pwd = st.text_input(t['password'], type="password", key="reg_pwd")
-            if st.button(t['register']):
-                # 这里模拟注册
-                st.success("注册成功！请登录。")
-
-    else:
-        # 已登录状态
-        st.success(f"已登录: {st.session_state.user_email}")
-        if st.button(t['logout']):
-            logout()
-
-        st.subheader("🚀 欢迎使用 AI 工具集")
-        st.write("这里将展示各种研发工具...")
-
-# --- 7. 主程序入口 ---
-def main():
-    # 初始化页面状态
-    if 'page' not in st.session_state:
-        st.session_state.page = 'home'
-
-    if st.session_state.page == 'admin':
-        show_admin_panel()
-    else:
-        show_home()
-
-if __name__ == "__main__":
-    main()
+    if submit_register:
+        if email and password:
+            st.info(f"模拟注册请求: {email}")
+            # 这里后续接入 Supabase 注册逻辑
+        else:
+            st.warning("请输入邮箱和密码")
