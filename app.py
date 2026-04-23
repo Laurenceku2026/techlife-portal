@@ -2,112 +2,161 @@ import streamlit as st
 from supabase import create_client, Client
 
 # --- 1. 页面配置 ---
-st.set_page_config(page_title="TechLife Portal", layout="centered")
+st.set_page_config(page_title="TechLife Portal", layout="wide")
 
-# --- 2. 侧边栏 (Sidebar) ---
-with st.sidebar:
-    # 标题
-    st.header("🚀 TechLife Suite")
-
-    # 关于系统介绍
-    st.subheader("📘 关于系统")
-    st.markdown("""
-    **TechLife Suite** 是专为研发工程师打造的 **AI 赋能 DFSS（六西格玛设计）** 平台。
-    
-    我们致力于通过人工智能技术，简化复杂的工程设计流程，帮助团队实现：
-    
-    - **智能需求分析**：快速拆解客户之声 (VOC)。
-    - **自动化风险评估**：AI 辅助生成 DFMEA。
-    - **参数优化设计**：利用算法寻找最优容差。
-    
-    让 AI 成为您的首席质量工程师。
-    """)
-
-    st.divider() # 分割线
-
-    # 工具列表（占位）
-    st.caption("可用工具:")
-    st.markdown("- 🛠️ VOC 分析助手")
-    st.markdown("- 🛠️ 智能 FMEA 生成器")
-    st.markdown("- 🛠️ 容差设计计算器")
-
-    st.divider()
-
-    # 联系方式
-    st.markdown("#### 📧 联系我们")
-    st.markdown("Techlife2027@gmail.com")
+# --- 2. 模拟 Supabase 连接 (请确保在 Streamlit Secrets 中配置了这些) ---
+# 这里为了演示不报错，先注释掉实际的连接，你需要确保你的 secrets 配置正确
+# SUPABASE_URL = st.secrets["SUPABASE_URL"]
+# SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+# supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- 3. 多语言字典 ---
 translations = {
     "zh": {
-        "welcome_title": "欢迎使用 TechLife 门户",
-        "welcome_text": "请登录以访问您的 AI 工程工具。",
-        "login_btn": "登录",
-        "register_btn": "注册",
-        "email_label": "邮箱",
-        "password_label": "密码",
+        "app_title": "TechLife Suite 门户",
+        "subtitle": "一站式工程研发 AI 工具集",
+        "login": "登录",
+        "register": "注册",
+        "logout": "退出登录",
+        "admin": "管理员入口",
+        "language_toggle": "English",
+        "email": "邮箱",
+        "password": "密码",
     },
     "en": {
-        "welcome_title": "Welcome to TechLife Portal",
-        "welcome_text": "Please login to access your AI engineering tools.",
-        "login_btn": "Login",
-        "register_btn": "Register",
-        "email_label": "Email",
-        "password_label": "Password",
+        "app_title": "TechLife Suite Portal",
+        "subtitle": "All-in-One AI Toolkit for R&D Engineering",
+        "login": "Login",
+        "register": "Register",
+        "logout": "Logout",
+        "admin": "Admin Panel",
+        "language_toggle": "中文",
+        "email": "Email",
+        "password": "Password",
     }
 }
 
-# --- 4. 语言切换逻辑 ---
+# --- 4. 初始化 Session State ---
 if 'language' not in st.session_state:
     st.session_state.language = 'zh'
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
 
+# --- 5. 切换语言函数 ---
 def toggle_language():
-    st.session_state.language = 'en' if st.session_state.language == 'zh' else 'zh'
-
-# 在侧边栏或顶部添加语言切换（这里放在侧边栏底部比较整洁）
-with st.sidebar:
-    st.divider()
     if st.session_state.language == 'zh':
-        st.button("🇺🇸 English", on_click=toggle_language, use_container_width=True)
+        st.session_state.language = 'en'
     else:
-        st.button("🇨🇳 中文", on_click=toggle_language, use_container_width=True)
+        st.session_state.language = 'zh'
 
-# 获取当前语言文本
+# --- 6. 获取当前语言文本 ---
 t = translations[st.session_state.language]
 
-# --- 5. 主界面布局 (Main) ---
-# 使用列来居中内容，但不分两列显示业务逻辑
-col1, col2, col3 = st.columns([1, 2, 1]) # 中间列宽，两边窄，实现居中效果
+# --- 7. 侧边栏 (Sidebar) ---
+with st.sidebar:
+    st.header("🚀 TechLife Suite")
 
-with col2:
-    st.title(t["welcome_title"])
-    st.write(t["welcome_text"])
-    
+    # 关于系统介绍
+    st.subheader("📘 关于系统")
+    if st.session_state.language == 'zh':
+        st.markdown("""
+        **TechLife Suite** 是专为研发工程师打造的 **AI 赋能 DFSS（六西格玛设计）** 平台。
+        
+        我们致力于通过人工智能技术，简化复杂的工程设计流程，帮助团队实现：
+        
+        - **智能需求分析**：快速拆解客户之声 (VOC)。
+        - **自动化风险评估**：AI 辅助生成 DFMEA。
+        - **参数优化设计**：利用算法寻找最优容差。
+        
+        让 AI 成为您的首席质量工程师。
+        """)
+    else:
+        st.markdown("""
+        **TechLife Suite** is an **AI-empowered DFSS (Design for Six Sigma)** platform designed for R&D engineers.
+        
+        We aim to simplify complex engineering design processes through AI, helping teams achieve:
+        
+        - **Smart Requirement Analysis**: Rapidly decompose Voice of Customer (VOC).
+        - **Automated Risk Assessment**: AI-assisted DFMEA generation.
+        - **Parameter Optimization**: Algorithm-driven tolerance design.
+        
+        Let AI be your Chief Quality Engineer.
+        """)
+
+    st.divider()
+
+    # 联系方式
+    st.markdown("### 📧 联系我们")
+    st.markdown("Email: Techlife2027@gmail.com")
+
+# --- 8. 主界面布局 ---
+# 使用容器来控制右上角布局
+header_container = st.container()
+with header_container:
+    # 创建两列，左边占大部分，右边放按钮
+    col1, col2 = st.columns([10, 1])
+
+    with col1:
+        # 左上角可以放标题（可选）
+        pass
+
+    with col2:
+        # 右上角：语言切换 + 管理员入口
+        # 使用两列来并排显示
+        lang_col, admin_col = st.columns([1, 1])
+
+        with lang_col:
+            # 语言切换按钮
+            st.button(
+                t["language_toggle"],
+                on_click=toggle_language,
+                key="lang_btn",
+                help="切换语言 / Switch Language"
+            )
+
+        with admin_col:
+            # 管理员入口（齿轮图标）
+            st.button(
+                "⚙️",
+                key="admin_btn",
+                help=t["admin"],
+                on_click=lambda: st.toast("管理员功能开发中...", icon="🚧")
+            )
+
+# --- 9. 主内容区 ---
+st.markdown("<br><br>", unsafe_allow_html=True)  # 增加一点顶部间距
+
+# 居中显示欢迎信息
+col_center_1, col_center_2, col_center_3 = st.columns([1, 2, 1])
+with col_center_2:
+    st.markdown(f"<h1 style='text-align: center;'>{t['app_title']}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center; color: gray;'>{t['subtitle']}</p>", unsafe_allow_html=True)
+
     st.markdown("---")
 
     # 登录表单
     with st.form("login_form"):
-        email = st.text_input(t["email_label"])
-        password = st.text_input(t["password_label"], type="password")
-        
-        # 两个大按钮并排
-        c1, c2 = st.columns(2)
-        with c1:
-            submit_login = st.form_submit_button(t["login_btn"], type="primary", use_container_width=True)
-        with c2:
-            submit_register = st.form_submit_button(t["register_btn"], use_container_width=True)
+        email = st.text_input(t["email"])
+        password = st.text_input(t["password"], type="password")
 
-    # --- 6. 简单的逻辑模拟 ---
-    if submit_login:
-        if email and password:
-            st.success(f"模拟登录成功: {email}")
-            # 这里后续接入 Supabase 登录逻辑
-        else:
-            st.warning("请输入邮箱和密码")
+        # 提交按钮
+        submitted = st.form_submit_button(t["login"])
+        if submitted:
+            # 这里只是演示，实际应调用 Supabase 登录
+            if email and password:
+                st.session_state.logged_in = True
+                st.success("登录成功！")
+                st.rerun()
+            else:
+                st.error("请输入邮箱和密码")
 
-    if submit_register:
-        if email and password:
-            st.info(f"模拟注册请求: {email}")
-            # 这里后续接入 Supabase 注册逻辑
-        else:
-            st.warning("请输入邮箱和密码")
+    # 注册按钮（放在登录下方）
+    if st.button(t["register"]):
+        st.info("注册功能开发中...")
+
+# --- 10. 登录后显示的内容（演示用） ---
+if st.session_state.logged_in:
+    st.success("您已登录！这里是您的仪表盘。")
+    if st.button(t["logout"]):
+        st.session_state.logged_in = False
+        st.rerun()
