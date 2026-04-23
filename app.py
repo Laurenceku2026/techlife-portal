@@ -169,12 +169,25 @@ Let AI become your Chief Quality Engineer.
 
 @st.cache_resource
 def init_supabase():
+    """使用 anon key 初始化（用于用户操作）"""
     try:
         return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    except Exception as e:
+    except Exception:
         return None
 
+@st.cache_resource
+def init_supabase_admin():
+    """使用 service key 初始化（用于管理员操作）"""
+    try:
+        service_key = st.secrets.get("SUPABASE_SERVICE_KEY", "")
+        if service_key:
+            return create_client(st.secrets["SUPABASE_URL"], service_key)
+    except Exception:
+        pass
+    return None
+
 supabase = init_supabase()
+supabase_admin = init_supabase_admin()
 
 # Session State
 if "lang" not in st.session_state:
@@ -475,7 +488,6 @@ def render_main_app():
                     lang_param = "zh" if st.session_state.lang == "zh" else "en"
                     full_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}&lang={lang_param}"
                     
-                    # 消耗免费次数（不显示消息）
                     allowed, new_remaining, _ = check_and_consume_trial(st.session_state.user_id, app_info["key"])
                     
                     if allowed:
@@ -500,7 +512,10 @@ def render_main_app():
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     
-    if not supabase:
+    # 使用 admin client 或普通 client
+    db = supabase_admin if supabase_admin else supabase
+    
+    if not db:
         st.warning("数据库连接失败")
         if st.button(t()["exit_admin"], use_container_width=True):
             st.session_state.admin_mode = False
@@ -509,8 +524,7 @@ def render_admin_panel():
         return
     
     try:
-        # 直接查询
-        response = supabase.table("profiles").select("*").execute()
+        response = db.table("profiles").select("*").execute()
         users = response.data if response.data else []
         
         pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
@@ -558,7 +572,7 @@ def render_admin_panel():
                                                   value=selected_user.get("free_trials_remaining", 10))
                 
                 if st.button(t()["update_btn"], use_container_width=True):
-                    supabase.table("profiles").update({
+                    db.table("profiles").update({
                         "subscription_tier": new_tier,
                         "free_trials_remaining": new_trials
                     }).eq("id", selected_user.get("id")).execute()
@@ -568,19 +582,13 @@ def render_admin_panel():
         st.markdown("---")
         st.subheader(t()["batch_ops"])
         if st.button(t()["reset_all_trials"], use_container_width=True):
-            supabase.table("profiles").update({"free_trials_remaining": 10}).eq("subscription_tier", "free").execute()
+            db.table("profiles").update({"free_trials_remaining": 10}).eq("subscription_tier", "free").execute()
             st.success("All free users trials reset to 10")
             st.rerun()
         
     except Exception as e:
         st.warning(f"无法获取数据: {e}")
-        st.info("请在 Supabase SQL Editor 中运行 SQL 修复权限")
-        with st.expander("点击查看修复 SQL"):
-            st.code("""
-ALTER TABLE public.profiles DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.usage_logs DISABLE ROW LEVEL SECURITY;
-UPDATE public.profiles SET subscription_tier = 'pro' WHERE email = 'techlife2027@gmail.com';
-            """)
+        st.info("请在 Supabase Project Settings → API 中复制 Service Role Key 并添加到 Secrets")
     
     st.markdown("---")
     if st.button(t()["exit_admin"], use_container_width=True):
