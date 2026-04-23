@@ -9,10 +9,21 @@ st.set_page_config(
     layout="wide"
 )
 
-# ==================== 多语言配置（完整中英文）====================
+# ==================== 管理员配置 ====================
+ADMIN_USERNAME = "Laurence_ku"
+ADMIN_PASSWORD = "Ku_product$2026"
+ADMIN_EMAIL = "techlife2027@gmail.com"  # 管理员邮箱
+
+# 三个 APP 的 URL
+APP_URLS = {
+    "feasibility": "https://appuct-feasibility-analysis.streamlit.app",
+    "dqa": "https://ai-design-dfmea.streamlit.app",
+    "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app"
+}
+
+# ==================== 多语言配置 ====================
 TEXTS = {
     "zh": {
-        # 侧边栏
         "sidebar_title": "TechLife Suite",
         "about_header": "📘 关于系统",
         "about_text": """
@@ -29,7 +40,6 @@ TEXTS = {
         "contact_header": "📧 联系我们",
         "contact_email": "邮箱: Techlife2027@gmail.com",
         
-        # 主界面
         "main_title": "TechLife Suite 门户",
         "main_subtitle": "一站式工程研发 AI 工具集",
         "email_placeholder": "请输入邮箱",
@@ -51,11 +61,9 @@ TEXTS = {
         "nav_title": "应用导航",
         "admin_panel": "管理员面板",
         
-        # 按钮
         "chinese": "中文",
         "english": "English",
         
-        # 管理员登录
         "admin_login_title": "管理员登录",
         "admin_username": "用户名",
         "admin_password": "密码",
@@ -63,7 +71,6 @@ TEXTS = {
         "admin_back": "返回用户登录",
         "admin_error": "用户名或密码错误",
         
-        # 管理员面板
         "total_users": "总用户数",
         "pro_users": "专业版用户",
         "free_users": "免费版用户",
@@ -80,9 +87,12 @@ TEXTS = {
         "total_used": "总使用次数",
         "reset_all_trials": "重置所有用户免费次数",
         "batch_ops": "批量操作",
+        "launch": "启动",
+        "login_failed": "登录失败",
+        "register_success": "注册成功！请登录",
+        "email_exists": "该邮箱已注册，请直接登录",
     },
     "en": {
-        # Sidebar
         "sidebar_title": "TechLife Suite",
         "about_header": "📘 About System",
         "about_text": """
@@ -99,7 +109,6 @@ Let AI become your Chief Quality Engineer.
         "contact_header": "📧 Contact Us",
         "contact_email": "Email: Techlife2027@gmail.com",
         
-        # Main
         "main_title": "TechLife Suite Portal",
         "main_subtitle": "One-stop AI Toolkit for R&D Engineering",
         "email_placeholder": "Enter your email",
@@ -121,11 +130,9 @@ Let AI become your Chief Quality Engineer.
         "nav_title": "App Navigation",
         "admin_panel": "Admin Panel",
         
-        # Buttons
         "chinese": "中文",
         "english": "English",
         
-        # Admin login
         "admin_login_title": "Admin Login",
         "admin_username": "Username",
         "admin_password": "Password",
@@ -133,7 +140,6 @@ Let AI become your Chief Quality Engineer.
         "admin_back": "Back to User Login",
         "admin_error": "Invalid credentials",
         
-        # Admin panel
         "total_users": "Total Users",
         "pro_users": "Pro Users",
         "free_users": "Free Users",
@@ -150,17 +156,11 @@ Let AI become your Chief Quality Engineer.
         "total_used": "Total Used",
         "reset_all_trials": "Reset All Users Trials",
         "batch_ops": "Batch Operations",
+        "launch": "Launch",
+        "login_failed": "Login failed",
+        "register_success": "Registration successful! Please login.",
+        "email_exists": "Email already registered. Please login.",
     }
-}
-
-ADMIN_USERNAME = "Laurence_ku"
-ADMIN_PASSWORD = "Ku_product$2026"
-
-# 三个 APP 的 URL
-APP_URLS = {
-    "feasibility": "https://appuct-feasibility-analysis.streamlit.app",
-    "dqa": "https://ai-design-dfmea.streamlit.app",  # 注意：去掉重复的 https://
-    "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app"
 }
 
 @st.cache_resource
@@ -193,8 +193,11 @@ if "show_admin_login" not in st.session_state:
 def t():
     return TEXTS[st.session_state.lang]
 
+def is_admin_user(email):
+    """判断是否是管理员"""
+    return email == ADMIN_EMAIL
+
 def get_user_profile(user_id: str):
-    """获取用户资料"""
     if not supabase or not user_id or user_id == "admin":
         return {"subscription_tier": "free", "free_trials_remaining": 10}
     try:
@@ -204,12 +207,11 @@ def get_user_profile(user_id: str):
             .execute()
         if response.data:
             return response.data[0]
-    except Exception as e:
-        print(f"Error: {e}")
+    except Exception:
+        pass
     return {"subscription_tier": "free", "free_trials_remaining": 10}
 
 def get_user_total_usage(user_id: str):
-    """获取用户总使用次数"""
     if not supabase or not user_id or user_id == "admin":
         return 0
     try:
@@ -222,7 +224,6 @@ def get_user_total_usage(user_id: str):
         return 0
 
 def check_and_consume_trial(user_id: str, app_name: str) -> tuple:
-    """检查并消耗免费次数"""
     if not supabase or user_id == "admin":
         return True, -1, "Admin mode"
     
@@ -247,8 +248,8 @@ def check_and_consume_trial(user_id: str, app_name: str) -> tuple:
             "analysis_count": 1,
             "used_at": datetime.now().isoformat()
         }).execute()
-    except Exception as e:
-        print(f"Error: {e}")
+    except Exception:
+        pass
     
     return True, remaining - 1, f"剩余 {remaining - 1} 次"
 
@@ -317,7 +318,7 @@ def render_admin_login_form():
                     st.session_state.admin_mode = True
                     st.session_state.show_admin_login = False
                     st.session_state.authenticated = True
-                    st.session_state.user_email = "admin@techlife.com"
+                    st.session_state.user_email = ADMIN_EMAIL
                     st.session_state.user_id = "admin"
                     st.rerun()
                 else:
@@ -348,9 +349,9 @@ def render_login_form():
                         st.session_state.user_email = response.user.email
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Login failed: {str(e)}")
+                        st.error(f"{t()['login_failed']}: {str(e)}")
                 else:
-                    st.warning("Please enter email and password")
+                    st.warning("请输入邮箱和密码")
         
         col_reg, col_forgot = st.columns(2)
         with col_reg:
@@ -373,26 +374,26 @@ def render_register_form():
             
             if st.button(t()["register_submit"], use_container_width=True, type="primary"):
                 if not email or not password:
-                    st.warning("Please fill in email and password")
+                    st.warning("请填写邮箱和密码")
                 elif password != confirm:
-                    st.warning("Passwords do not match")
+                    st.warning("两次输入的密码不一致")
                 elif len(password) < 6:
-                    st.warning("Password must be at least 6 characters")
+                    st.warning("密码长度至少6位")
                 elif supabase:
                     try:
                         response = supabase.auth.sign_up({
                             "email": email,
                             "password": password
                         })
-                        st.success("Registration successful! Please login.")
+                        st.success(t()["register_success"])
                         st.session_state.show_register = False
                         st.rerun()
                     except Exception as e:
                         error_msg = str(e)
                         if "User already registered" in error_msg:
-                            st.error("Email already registered. Please login.")
+                            st.error(t()["email_exists"])
                         else:
-                            st.error(f"Registration failed: {error_msg}")
+                            st.error(f"注册失败: {error_msg}")
         
         if st.button(t()["back_to_login"], use_container_width=True):
             st.session_state.show_register = False
@@ -403,7 +404,7 @@ def render_reset_password_form():
     with col2:
         st.markdown(f"<h2 style='text-align: center;'>{t()['forgot_password']}</h2>", unsafe_allow_html=True)
         with st.container(border=True):
-            st.info("Please contact admin to reset password")
+            st.info("请联系管理员重置密码")
             st.markdown(f"📧 {t()['contact_email']}")
         if st.button(t()["back_to_login"], use_container_width=True):
             st.session_state.reset_password = False
@@ -464,10 +465,10 @@ def render_main_app():
                     desc = app_info["desc"] if st.session_state.lang == "zh" else app_info["desc_en"]
                     st.caption(desc)
                 with col_btn:
-                    if st.button("启动" if st.session_state.lang == "zh" else "Launch", 
-                                 key=app_info["key"], use_container_width=True):
+                    if st.button(t()["launch"], key=app_info["key"], use_container_width=True):
                         allowed, remaining, msg = check_and_consume_trial(st.session_state.user_id, app_info["key"])
                         if allowed:
+                            # 传递用户信息到子应用
                             redirect_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}"
                             st.markdown(f'<meta http-equiv="refresh" content="0; url={redirect_url}">', unsafe_allow_html=True)
                         else:
@@ -485,12 +486,9 @@ def render_admin_panel():
         return
     
     try:
-        # 使用 service_role key 或者直接查询
-        # 注意：需要在 secrets 中添加 SUPABASE_SERVICE_KEY
         response = supabase.table("profiles").select("*").execute()
         users = response.data
         
-        # 统计数据
         pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
         
         col1, col2, col3 = st.columns(3)
@@ -511,11 +509,8 @@ def render_admin_panel():
                     t()["email_col"]: user.get("email"),
                     t()["subscription_col"]: "💎 Pro" if user.get("subscription_tier") == "pro" else "🔒 Free",
                     t()["trials_left"]: user.get("free_trials_remaining", 10),
-                    "user_id": user.get("id")
                 })
             st.dataframe(user_data, use_container_width=True)
-        else:
-            st.info("No user data")
         
         st.markdown("---")
         st.subheader(t()["subscription_mgmt"])
@@ -552,8 +547,8 @@ def render_admin_panel():
             st.rerun()
         
     except Exception as e:
-        st.warning(f"Unable to fetch data: {e}")
-        st.info("Please make sure RLS policies are configured correctly")
+        st.warning(f"无法获取数据: {e}")
+        st.info("请确保数据库表已创建")
     
     st.markdown("---")
     if st.button(t()["exit_admin"], use_container_width=True):
