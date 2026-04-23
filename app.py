@@ -7,7 +7,7 @@ st.set_page_config(
     page_title="TechLife Suite - AI Engineering Platform",
     page_icon="🔧",
     layout="wide",
-    initial_sidebar_state="expanded"  # 确保侧边栏展开
+    initial_sidebar_state="expanded"
 )
 
 # ==================== 多语言配置 ====================
@@ -38,7 +38,6 @@ TEXTS = {
         "login_btn": "登录",
         "register_btn": "注册新账号",
         "forgot_password": "忘记密码?",
-        "demo_hint": "演示账号: techlife2027@gmail.com",
         
         # 注册
         "register_title": "注册新账号",
@@ -60,6 +59,14 @@ TEXTS = {
         # 按钮
         "chinese": "中文",
         "english": "English",
+        
+        # 管理员登录
+        "admin_login_title": "管理员登录",
+        "admin_username": "用户名",
+        "admin_password": "密码",
+        "admin_login_btn": "登录",
+        "admin_back": "返回用户登录",
+        "admin_error": "用户名或密码错误",
     },
     "en": {
         # Sidebar
@@ -87,7 +94,6 @@ Let AI become your Chief Quality Engineer.
         "login_btn": "LOG IN",
         "register_btn": "REGISTER",
         "forgot_password": "Forgot Password?",
-        "demo_hint": "Demo: techlife2027@gmail.com",
         
         # Register
         "register_title": "Register New Account",
@@ -109,8 +115,20 @@ Let AI become your Chief Quality Engineer.
         # Buttons
         "chinese": "中文",
         "english": "English",
+        
+        # Admin login
+        "admin_login_title": "Admin Login",
+        "admin_username": "Username",
+        "admin_password": "Password",
+        "admin_login_btn": "Login",
+        "admin_back": "Back to User Login",
+        "admin_error": "Invalid username or password",
     }
 }
+
+# ==================== 管理员凭证 ====================
+ADMIN_USERNAME = "Laurence_ku"
+ADMIN_PASSWORD = "Ku_product$2026"
 
 # ==================== 初始化 Supabase ====================
 @st.cache_resource
@@ -134,6 +152,8 @@ if "reset_password" not in st.session_state:
     st.session_state.reset_password = False
 if "admin_mode" not in st.session_state:
     st.session_state.admin_mode = False
+if "show_admin_login" not in st.session_state:
+    st.session_state.show_admin_login = False
 
 def t():
     return TEXTS[st.session_state.lang]
@@ -227,29 +247,100 @@ def render_sidebar():
 
 # ==================== 右上角按钮 ====================
 def render_top_buttons():
-    col1, col2, col3, col4, col5 = st.columns([8, 1, 1, 1, 1])
+    # 自定义 CSS 让按钮更突出
+    st.markdown("""
+    <style>
+    /* 红底白字按钮样式 */
+    div[data-testid="column"]:nth-of-type(2) button,
+    div[data-testid="column"]:nth-of-type(3) button {
+        background-color: #dc3545 !important;
+        color: white !important;
+        border: none !important;
+        font-weight: 600 !important;
+        border-radius: 8px !important;
+        padding: 8px 16px !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+    }
+    div[data-testid="column"]:nth-of-type(2) button:hover,
+    div[data-testid="column"]:nth-of-type(3) button:hover {
+        background-color: #c82333 !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+    }
+    /* 齿轮按钮样式 */
+    div[data-testid="column"]:nth-of-type(4) button {
+        background-color: #6c757d !important;
+        color: white !important;
+        font-weight: 600 !important;
+        border-radius: 8px !important;
+    }
+    div[data-testid="column"]:nth-of-type(4) button:hover {
+        background-color: #5a6268 !important;
+    }
+    /* 输入框变大 */
+    div[data-testid="stTextInput"] input {
+        font-size: 18px !important;
+        padding: 12px 16px !important;
+        height: auto !important;
+        border-radius: 10px !important;
+    }
+    /* 按钮变大 */
+    .stButton button {
+        font-size: 16px !important;
+        padding: 10px 20px !important;
+    }
+    /* 主标题字体 */
+    h1 {
+        font-size: 48px !important;
+    }
+    h2 {
+        font-size: 32px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3, col4, col5 = st.columns([8, 1.2, 1.2, 1.2, 1])
     with col2:
-        if st.button("中文", key="zh_btn", use_container_width=True,
+        if st.button(t()["chinese"], key="zh_btn", use_container_width=True,
                      disabled=st.session_state.lang == "zh"):
             st.session_state.lang = "zh"
             st.rerun()
     with col3:
-        if st.button("English", key="en_btn", use_container_width=True,
+        if st.button(t()["english"], key="en_btn", use_container_width=True,
                      disabled=st.session_state.lang == "en"):
             st.session_state.lang = "en"
             st.rerun()
     with col4:
-        # 管理员齿轮图标
-        if st.session_state.authenticated:
-            admin_emails = ["techlife2027@gmail.com", "laurence_ku2002@yahoo.com.hk"]
-            if st.session_state.user_email in admin_emails:
-                if st.button("⚙️", key="admin_btn", help="管理员面板", use_container_width=True):
-                    st.session_state.admin_mode = not st.session_state.admin_mode
+        # 齿轮按钮 - 点击显示管理员登录
+        if st.button("⚙️", key="gear_btn", help="管理员登录", use_container_width=True):
+            st.session_state.show_admin_login = True
+            st.rerun()
+
+# ==================== 管理员登录表单 ====================
+def render_admin_login_form():
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown(f"<h2 style='text-align: center;'>{t()['admin_login_title']}</h2>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        with st.container(border=True):
+            username = st.text_input(t()["admin_username"], key="admin_username")
+            password = st.text_input(t()["admin_password"], type="password", key="admin_password")
+            
+            if st.button(t()["admin_login_btn"], use_container_width=True, type="primary"):
+                if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+                    st.session_state.admin_mode = True
+                    st.session_state.show_admin_login = False
+                    # 可选：设置一个管理员标记
+                    st.session_state.is_admin = True
                     st.rerun()
-            else:
-                st.button("⚙️", key="admin_btn_disabled", disabled=True, use_container_width=True)
-        else:
-            st.button("⚙️", key="admin_btn_hidden", disabled=True, use_container_width=True)
+                else:
+                    st.error(t()["admin_error"])
+        
+        if st.button(t()["admin_back"], use_container_width=True):
+            st.session_state.show_admin_login = False
+            st.rerun()
 
 # ==================== 登录表单 ====================
 def render_login_form():
@@ -257,7 +348,7 @@ def render_login_form():
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         st.markdown(f"<h1 style='text-align: center;'>{t()['main_title']}</h1>", unsafe_allow_html=True)
-        st.markdown(f"<p style='text-align: center; color: gray;'>{t()['main_subtitle']}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; color: gray; font-size: 18px;'>{t()['main_subtitle']}</p>", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
     
     # 登录表单容器（居中）
@@ -293,8 +384,6 @@ def render_login_form():
             if st.button(t()["forgot_password"], use_container_width=True):
                 st.session_state.reset_password = True
                 st.rerun()
-        
-        st.caption(t()["demo_hint"])
 
 # ==================== 注册表单 ====================
 def render_register_form():
@@ -473,28 +562,11 @@ def render_admin_panel():
         
         if st.button("退出管理员模式"):
             st.session_state.admin_mode = False
+            st.session_state.is_admin = False
             st.rerun()
 
 # ==================== 主程序 ====================
 def main():
-    # 自定义 CSS
-    st.markdown("""
-    <style>
-    .stButton button {
-        border-radius: 8px;
-    }
-    .stTextInput input {
-        border-radius: 8px;
-    }
-    div[data-testid="stMetric"] {
-        background-color: #f0f2f6;
-        border-radius: 10px;
-        padding: 10px;
-        text-align: center;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
     # 始终渲染侧边栏
     render_sidebar()
     
@@ -502,7 +574,9 @@ def main():
     render_top_buttons()
     
     # 根据状态渲染主内容
-    if not st.session_state.authenticated:
+    if st.session_state.get("show_admin_login", False):
+        render_admin_login_form()
+    elif not st.session_state.authenticated:
         if st.session_state.get("show_register", False):
             render_register_form()
         elif st.session_state.get("reset_password", False):
