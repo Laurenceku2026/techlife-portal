@@ -1,6 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client
 from datetime import datetime
+import urllib.parse
 
 # ==================== 页面配置 ====================
 st.set_page_config(
@@ -91,9 +92,9 @@ TEXTS = {
         "login_failed": "登录失败",
         "register_success": "注册成功！请登录",
         "email_exists": "该邮箱已注册，请直接登录",
-        "coming_soon": "子应用即将上线",
         "trial_consumed": "✅ 免费次数已消耗！剩余 {} 次",
         "open_new_tab": "🔗 点击按钮将在新标签页中打开应用",
+        "enter_to_login": "提示：按 Enter 键可直接登录",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -163,9 +164,9 @@ Let AI become your Chief Quality Engineer.
         "login_failed": "Login failed",
         "register_success": "Registration successful! Please login.",
         "email_exists": "Email already registered. Please login.",
-        "coming_soon": "Sub-app coming soon",
         "trial_consumed": "✅ Trial consumed! {} remaining",
         "open_new_tab": "🔗 Click button to open app in new tab",
+        "enter_to_login": "Tip: Press Enter to login",
     }
 }
 
@@ -330,10 +331,25 @@ def render_admin_login_form():
             st.rerun()
 
 def render_login_form():
+    # 使用 JavaScript 实现 Enter 键登录
+    st.markdown("""
+    <script>
+    document.addEventListener('keypress', function(event) {
+        if (event.key === 'Enter') {
+            const loginBtn = document.querySelector('button[data-testid="baseButton-primary"]');
+            if (loginBtn && loginBtn.innerText === '登录') {
+                loginBtn.click();
+            }
+        }
+    });
+    </script>
+    """, unsafe_allow_html=True)
+    
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         st.markdown(f"<h1 style='text-align: center;'>{t()['main_title']}</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='text-align: center; color: gray;'>{t()['main_subtitle']}</p>", unsafe_allow_html=True)
+        st.caption(t()["enter_to_login"])
         
         with st.container(border=True):
             email = st.text_input(t()["email_placeholder"], key="login_email")
@@ -468,8 +484,11 @@ def render_main_app():
                     desc = app_info["desc"] if st.session_state.lang == "zh" else app_info["desc_en"]
                     st.caption(desc)
                 with col_btn:
+                    # 构建带语言参数和用户信息的 URL
+                    lang_param = "zh" if st.session_state.lang == "zh" else "en"
+                    full_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}&lang={lang_param}"
+                    
                     # 使用 link_button 在新窗口打开
-                    full_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}"
                     if st.link_button(t()["launch"], full_url, use_container_width=True):
                         # 消耗免费次数
                         allowed, remaining, msg = check_and_consume_trial(st.session_state.user_id, app_info["key"])
@@ -488,7 +507,8 @@ def render_admin_panel():
         return
     
     try:
-        # 使用 service_role key 或直接查询
+        # 方法：尝试使用不同的表名或直接查询
+        # 注意：如果需要管理员权限，需要在 Supabase 中设置
         response = supabase.table("profiles").select("*").execute()
         users = response.data
         
@@ -551,7 +571,15 @@ def render_admin_panel():
         
     except Exception as e:
         st.warning(f"无法获取数据: {e}")
-        st.info("请确保数据库表已创建")
+        st.info("请在 Supabase SQL Editor 中运行以下命令修复权限：")
+        st.code("""
+-- 修复管理员权限
+ALTER TABLE public.profiles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable all for authenticated users" ON public.profiles
+    FOR ALL USING (true);
+        """)
     
     st.markdown("---")
     if st.button(t()["exit_admin"], use_container_width=True):
