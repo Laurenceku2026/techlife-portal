@@ -66,10 +66,15 @@ translations = {
 # 获取当前语言包
 t = translations[st.session_state.language]
 
-# --- 4. 自定义 CSS (大字体 + 右上角布局修复) ---
+# --- 4. 自定义 CSS ---
 st.markdown("""
     <style>
-    /* 放大输入框内的文字和占位符 */
+    /* 全局背景 */
+    .stApp {
+        background-color: #f5f5f5;
+    }
+
+    /* 放大输入框内的文字 */
     .stTextInput > div > div > input,
     .stPasswordInput > div > div > input {
         font-size: 18px !important;
@@ -83,68 +88,37 @@ st.markdown("""
         font-weight: 600;
     }
 
-    /* 按钮样式 */
+    /* 统一按钮高度和字体 */
     .stButton > button {
         height: 50px !important;
         font-size: 18px !important;
         width: 100%;
+        border-radius: 8px;
     }
 
-    /* 修复右上角布局：确保内容右对齐 */
+    /* 右上角语言切换按钮样式 */
     .top-right-container {
         display: flex;
         justify-content: flex-end;
-        align-items: center;
         gap: 10px;
-        margin-bottom: 20px;
-    }
-
-    /* 语言按钮样式 */
-    .lang-btn {
-        border: 1px solid #ccc;
-        background-color: white;
-        color: black;
-        padding: 5px 15px;
-        border-radius: 5px;
-        font-size: 14px;
-    }
-
-    .lang-btn.active {
-        background-color: #FF4B4B;
-        color: white;
-        border-color: #FF4B4B;
-        font-weight: bold;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 5. 顶部右上角控制栏 (语言 + 齿轮) ---
+# --- 5. 顶部右上角控制栏 ---
 # 使用列布局将内容推到最右边
-col_empty, col_controls = st.columns([3, 1]) # 3:1 的比例，把控件挤到右边
+col_empty, col_controls = st.columns([3, 1])
 
 with col_controls:
-    # 使用容器确保内部元素右对齐
-    top_container = st.container()
-    with top_container:
-        # 这里使用 HTML/CSS 来精确控制按钮样式和排列
-        btn_zh_class = "lang-btn active" if st.session_state.language == 'zh' else "lang-btn"
-        btn_en_class = "lang-btn active" if st.session_state.language == 'en' else "lang-btn"
-
-        # 创建两列来放按钮，避免 Streamlit 按钮默认的垂直堆叠问题
-        c1, c2, c3 = st.columns([1, 1, 0.5])
-        with c1:
-            if st.button("中文", key="btn_zh"):
-                st.session_state.language = 'zh'
-                st.rerun()
-        with c2:
-            if st.button("English", key="btn_en"):
-                st.session_state.language = 'en'
-                st.rerun()
-        with c3:
-            # 齿轮图标作为管理员入口
-            st.markdown("<div style='padding-top:10px'>⚙️</div>", unsafe_allow_html=True)
-            # 如果需要齿轮可点击，可以使用下面这行代替上面那行：
-            # if st.button("⚙️", key="btn_admin"): pass
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("中文", key="btn_zh"):
+            st.session_state.language = 'zh'
+            st.rerun()
+    with c2:
+        if st.button("English", key="btn_en"):
+            st.session_state.language = 'en'
+            st.rerun()
 
 st.markdown("---") # 分隔线
 
@@ -161,27 +135,33 @@ with st.sidebar:
     st.markdown(t["email_label"])
 
 # --- 7. 主界面登录框 ---
-# 居中显示
-c1, c2, c3 = st.columns([1, 2, 1]) # 中间列宽为2，两边为1，实现居中
+# 使用列布局实现居中，比例 1:2:1 表示中间宽，两边窄
+col_left, col_center, col_right = st.columns([1, 2, 1])
 
-with c2:
-    st.markdown(f"<h1 style='text-align: center;'>{t['main_title']}</h1>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align: center; color: grey;'>{t['main_subtitle']}</p>", unsafe_allow_html=True)
+with col_center:
+    # 标题区域
+    st.markdown(f"<h1 style='text-align: center; font-family: sans-serif;'>{t['main_title']}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center; color: grey; font-size: 16px;'>{t['main_subtitle']}</p>", unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True) # 间距
+    st.markdown("<br>", unsafe_allow_html=True) # 增加一点间距
 
+    # 登录表单
     with st.form(key='login_form'):
-        email = st.text_input(t["email_placeholder"], placeholder="")
-        password = st.text_input(t["password_placeholder"], type="password", placeholder="")
+        email = st.text_input("", placeholder=t["email_placeholder"])
+        password = st.text_input("", placeholder=t["password_placeholder"], type="password")
+
+        # 登录按钮
         submit_button = st.form_submit_button(label=t["login_btn"])
 
         if submit_button:
-            # 这里添加登录逻辑
-            st.success("登录功能待实现")
+            if email and password:
+                st.success("登录成功！")
+            else:
+                st.warning("请输入邮箱和密码")
 
-    # 注册按钮单独放在下面，或者也可以用 form 里的，看设计需求
-    # 这里为了美观，放在 form 外面居中
-    c_reg_1, c_reg_2, c_reg_3 = st.columns([1, 2, 1])
-    with c_reg_2:
+    # 注册按钮（放在表单下方，独立显示）
+    # 使用 columns 再次居中这个按钮，使其宽度与上面的输入框对齐
+    r_col1, r_col2, r_col3 = st.columns([0.2, 0.6, 0.2])
+    with r_col2:
         if st.button(t["register_btn"]):
             st.info("注册功能待实现")
