@@ -1,5 +1,6 @@
 streamlit>=1.28.0
-st-supabase-connection
-supabase
+supabase>=2.0.0
+python-dotenv>=1.0.0
+pandas>=2.0.0
 pyjwt>=2.8.0
-pandas
+# stripe>=7.0.0  # 如果需要支付功能，取消注释
