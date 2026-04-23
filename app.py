@@ -1,237 +1,187 @@
 import streamlit as st
 
-# --- 页面配置 ---
-st.set_page_config(page_title="TechLife Suite 门户", layout="wide")
+# --- 1. 页面配置 ---
+st.set_page_config(page_title="TechLife Portal", layout="wide")
 
-# --- 自定义 CSS 样式 ---
+# --- 2. 初始化 Session State ---
+if 'language' not in st.session_state:
+    st.session_state.language = 'zh'
+
+# --- 3. 多语言字典 ---
+translations = {
+    "zh": {
+        # 侧边栏
+        "sidebar_title": "TechLife Suite",
+        "about_header": "📘 关于系统",
+        "about_text": """
+        **TechLife Suite** 是专为研发工程师打造的 **AI 赋能 DFSS（六西格玛设计）** 平台。
+
+        我们致力于通过人工智能技术，简化复杂的工程设计流程，帮助团队实现：
+
+        - **智能需求分析**：快速拆解客户之声 (VOC)。
+        - **自动化风险评估**：AI 辅助生成 DFMEA。
+        - **参数优化设计**：利用算法寻找最优容差。
+
+        让 AI 成为您的首席质量工程师。
+        """,
+        "contact_header": "📧 联系我们",
+        "email_label": "邮箱: Techlife2027@gmail.com",
+
+        # 主界面
+        "main_title": "TechLife Suite 门户",
+        "main_subtitle": "一站式工程研发 AI 工具集",
+        "email_placeholder": "请输入邮箱",
+        "password_placeholder": "请输入密码",
+        "login_btn": "登 录",
+        "register_btn": "注 册"
+    },
+    "en": {
+        # 侧边栏
+        "sidebar_title": "TechLife Suite",
+        "about_header": "📘 About System",
+        "about_text": """
+        **TechLife Suite** is a platform designed for R&D engineers, featuring **AI-empowered DFSS (Design for Six Sigma)**.
+
+        We are committed to simplifying complex engineering design processes through AI, helping teams achieve:
+
+        - **Intelligent Requirement Analysis**: Rapidly deconstruct Voice of Customer (VOC).
+        - **Automated Risk Assessment**: AI-assisted DFMEA generation.
+        - **Parameter Optimization**: Find optimal tolerances using algorithms.
+
+        Let AI become your Chief Quality Engineer.
+        """,
+        "contact_header": "📧 Contact Us",
+        "email_label": "Email: Techlife2027@gmail.com",
+
+        # 主界面
+        "main_title": "TechLife Suite Portal",
+        "main_subtitle": "One-stop AI Toolkit for R&D Engineering",
+        "email_placeholder": "Please enter email",
+        "password_placeholder": "Please enter password",
+        "login_btn": "LOG IN",
+        "register_btn": "REGISTER"
+    }
+}
+
+# 获取当前语言包
+t = translations[st.session_state.language]
+
+# --- 4. 自定义 CSS (大字体 + 右上角布局修复) ---
 st.markdown("""
-<style>
-    /* 全局设置 */
-    .stApp {
-        background-color: #f5f5f5;
-        overflow-x: hidden;
+    <style>
+    /* 放大输入框内的文字和占位符 */
+    .stTextInput > div > div > input,
+    .stPasswordInput > div > div > input {
+        font-size: 18px !important;
+        height: 50px !important;
     }
 
-    /* 隐藏 Streamlit 默认元素 */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-
-    /* --- 左侧侧边栏样式 --- */
-    .sidebar-content {
-        padding: 40px 20px;
-        color: #333;
-    }
-    .sidebar-content h1 {
-        font-size: 24px;
-        font-weight: bold;
-        margin-bottom: 20px;
-        color: #111;
-    }
-    .sidebar-content p {
-        font-size: 14px;
-        line-height: 1.6;
-        color: #555;
-    }
-    .contact-info {
-        margin-top: 50px;
-        padding-top: 20px;
-        border-top: 1px solid #eee;
-        font-size: 13px;
-        color: #777;
+    /* 放大输入框的标签 */
+    .stTextInput > label,
+    .stPasswordInput > label {
+        font-size: 18px !important;
+        font-weight: 600;
     }
 
-    /* --- 右侧登录框悬浮层 --- */
-    .login-card {
-        position: absolute; /* 绝对定位，脱离文档流 */
-        top: 50%;            /* 垂直居中 */
-        right: 10%;          /* 距离右侧 10% */
-        transform: translateY(-50%); /* 精确垂直居中修正 */
-        width: 380px;
-        background-color: white;
-        padding: 35px;
-        border-radius: 12px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.1); /* 柔和阴影 */
-        z-index: 100;        /* 确保在最上层 */
-        border: 1px solid #e0e0e0;
-    }
-
-    /* 登录框内的标题 */
-    .login-title {
-        text-align: center;
-        font-size: 22px;
-        font-weight: bold;
-        margin-bottom: 10px;
-        color: #111;
-    }
-    .login-subtitle {
-        text-align: center;
-        font-size: 13px;
-        color: #888;
-        margin-bottom: 30px;
-    }
-
-    /* 输入框样式 - 纯黑色线条和文字 */
-    .stTextInput > div > div > input {
-        color: #000 !important; /* 输入文字黑色 */
-        border-color: #000 !important; /* 边框黑色 */
-    }
-    /* 解决 Streamlit 输入框聚焦时的蓝色边框，改为黑色 */
-    .stTextInput input:focus {
-        border-color: #000 !important;
-        box-shadow: 0 0 0 1px #000 !important;
-    }
-
-    /* 按钮区域布局 */
+    /* 按钮样式 */
     .stButton > button {
+        height: 50px !important;
+        font-size: 18px !important;
         width: 100%;
-        border-radius: 6px;
-        font-weight: bold;
-        margin-top: 10px;
     }
 
-    /* 注册按钮样式 (黑色) */
-    .register-btn button {
-        background-color: #000;
-        color: white;
-        border: 1px solid #000;
-    }
-    .register-btn button:hover {
-        background-color: #333;
-        border-color: #333;
+    /* 修复右上角布局：确保内容右对齐 */
+    .top-right-container {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
     }
 
-    /* 登录按钮样式 (白色底，黑色边框) */
-    .login-btn button {
+    /* 语言按钮样式 */
+    .lang-btn {
+        border: 1px solid #ccc;
         background-color: white;
         color: black;
-        border: 1px solid #000;
+        padding: 5px 15px;
+        border-radius: 5px;
+        font-size: 14px;
     }
-    .login-btn button:hover {
-        background-color: #f0f0f0;
+
+    .lang-btn.active {
+        background-color: #FF4B4B;
+        color: white;
+        border-color: #FF4B4B;
+        font-weight: bold;
     }
-</style>
-""", unsafe_allow_html=True)
-
-# --- 页面布局 ---
-
-# 创建两列：左侧 30%，右侧 70%
-col_left, col_right = st.columns([3, 7])
-
-# --- 左侧内容 ---
-with col_left:
-    st.markdown("""
-    <div class="sidebar-content">
-        <h1>TechLife Suite</h1>
-        <h3>关于系统</h3>
-        <p>TechLife Suite 是专为开发工程师打造的 AI 辅助开发平台。我们致力于通过人工智能技术，简化复杂的工程设计流程。</p>
-        <ul>
-            <li><strong>智能需求分析：</strong>快速拆解用户需求。</li>
-            <li><strong>自动代码生成：</strong>AI 辅助生成高质量代码。</li>
-            <li><strong>系统自动优化：</strong>持续监控系统性能。</li>
-        </ul>
-
-        <div class="contact-info">
-            <p><strong>联系我们</strong></p>
-            <p>邮箱: techlife@example.com</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# --- 右侧内容 (背景区域) ---
-with col_right:
-    # 这里主要作为背景，登录框会通过 CSS 悬浮在上面
-
-    # 1. 右上角的语言切换 (使用列布局模拟)
-    c1, c2 = st.columns([6, 1])
-    with c2:
-        # 简单的语言切换按钮
-        st.button("中文", use_container_width=True)
-        st.button("English", use_container_width=True)
-
-    # 2. 使用 HTML 注入悬浮的登录框
-    st.markdown("""
-    <div class="login-card">
-        <div class="login-title">TechLife Suite 门户</div>
-        <div class="login-subtitle">一站式工程设计 AI 工具箱</div>
-
-        <!-- 这里使用 Streamlit 的组件占位，通过 JS 或 CSS 很难直接控制 Streamlit 原生组件进入 HTML 字符串，
-             所以我们在 HTML 下方放置真正的 Streamlit 组件，并用 CSS 隐藏原生位置，或者直接用 HTML 表单 -->
-
-        <!-- 方案：使用纯 HTML 表单模拟界面，或者使用 Streamlit 组件覆盖。
-             为了保证功能可用，我们在下面放置真实的组件，并用 CSS 绝对定位到这里 -->
-    </div>
-    """, unsafe_allow_html=True)
-
-    # --- 真正的交互组件 (通过 CSS 定位到右侧中间) ---
-    # 我们创建一个空的容器，然后用 CSS 把它移动到登录框的位置
-
-    # 输入框
-    username = st.text_input("请输入邮箱", key="user_input", label_visibility="collapsed")
-    password = st.text_input("请输入密码", key="pass_input", label_visibility="collapsed")
-
-    # 按钮列
-    # 注意：我们需要给这些按钮加上自定义 class 才能应用上面的 CSS
-    # 这里使用 columns 来并排或堆叠按钮
-    col_btn1, col_btn2 = st.columns(2, gap="small")
-
-    with col_btn1:
-        # 登录按钮
-        login_clicked = st.button("登录", key="login_btn")
-
-    with col_btn2:
-        # 注册按钮
-        register_clicked = st.button("注册", key="register_btn")
-
-    # --- 强制将上面的组件移动到右侧悬浮位置 ---
-    # 这是一个稍微高级的技巧，利用 CSS 将刚才生成的 input 和 button 移动
-    st.markdown("""
-    <style>
-        /* 找到刚才生成的输入框和按钮的父容器，强制移动位置 */
-        /* 注意：Streamlit 的组件层级很深，我们需要精准定位 */
-
-        /* 隐藏默认的顶部间距 */
-        .element-container {
-            margin-bottom: 0 !important;
-        }
-
-        /* 定位输入框 1 (用户名) */
-        div[data-baseweb="input"] {
-            position: absolute;
-            top: 50%;
-            right: 10%;
-            transform: translateY(-20px);
-            width: 380px;
-            z-index: 101;
-            background: transparent;
-        }
-        /* 定位输入框 2 (密码) */
-        div[data-baseweb="input"]:nth-of-type(2) {
-            top: 50%;
-            transform: translateY(40px);
-        }
-
-        /* 定位按钮容器 */
-        div[data-testid="stHorizontalBlock"] {
-            position: absolute;
-            top: 50%;
-            right: 10%;
-            transform: translateY(110px);
-            width: 380px;
-            z-index: 102;
-            gap: 10px !important;
-        }
-
-        /* 修正按钮样式以匹配设计 */
-        button[kind="secondary"] {
-            background-color: white;
-            color: black;
-            border: 1px solid black;
-            width: 100%;
-        }
-         button[kind="secondary"]:hover {
-            background-color: #f0f0f0;
-            border-color: black;
-        }
     </style>
     """, unsafe_allow_html=True)
+
+# --- 5. 顶部右上角控制栏 (语言 + 齿轮) ---
+# 使用列布局将内容推到最右边
+col_empty, col_controls = st.columns([3, 1]) # 3:1 的比例，把控件挤到右边
+
+with col_controls:
+    # 使用容器确保内部元素右对齐
+    top_container = st.container()
+    with top_container:
+        # 这里使用 HTML/CSS 来精确控制按钮样式和排列
+        btn_zh_class = "lang-btn active" if st.session_state.language == 'zh' else "lang-btn"
+        btn_en_class = "lang-btn active" if st.session_state.language == 'en' else "lang-btn"
+
+        # 创建两列来放按钮，避免 Streamlit 按钮默认的垂直堆叠问题
+        c1, c2, c3 = st.columns([1, 1, 0.5])
+        with c1:
+            if st.button("中文", key="btn_zh"):
+                st.session_state.language = 'zh'
+                st.rerun()
+        with c2:
+            if st.button("English", key="btn_en"):
+                st.session_state.language = 'en'
+                st.rerun()
+        with c3:
+            # 齿轮图标作为管理员入口
+            st.markdown("<div style='padding-top:10px'>⚙️</div>", unsafe_allow_html=True)
+            # 如果需要齿轮可点击，可以使用下面这行代替上面那行：
+            # if st.button("⚙️", key="btn_admin"): pass
+
+st.markdown("---") # 分隔线
+
+# --- 6. 侧边栏内容 ---
+with st.sidebar:
+    st.title(t["sidebar_title"])
+
+    st.subheader(t["about_header"])
+    st.markdown(t["about_text"])
+
+    st.divider()
+
+    st.subheader(t["contact_header"])
+    st.markdown(t["email_label"])
+
+# --- 7. 主界面登录框 ---
+# 居中显示
+c1, c2, c3 = st.columns([1, 2, 1]) # 中间列宽为2，两边为1，实现居中
+
+with c2:
+    st.markdown(f"<h1 style='text-align: center;'>{t['main_title']}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center; color: grey;'>{t['main_subtitle']}</p>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True) # 间距
+
+    with st.form(key='login_form'):
+        email = st.text_input(t["email_placeholder"], placeholder="")
+        password = st.text_input(t["password_placeholder"], type="password", placeholder="")
+        submit_button = st.form_submit_button(label=t["login_btn"])
+
+        if submit_button:
+            # 这里添加登录逻辑
+            st.success("登录功能待实现")
+
+    # 注册按钮单独放在下面，或者也可以用 form 里的，看设计需求
+    # 这里为了美观，放在 form 外面居中
+    c_reg_1, c_reg_2, c_reg_3 = st.columns([1, 2, 1])
+    with c_reg_2:
+        if st.button(t["register_btn"]):
+            st.info("注册功能待实现")
