@@ -92,9 +92,7 @@ TEXTS = {
         "login_failed": "登录失败",
         "register_success": "注册成功！请登录",
         "email_exists": "该邮箱已注册，请直接登录",
-        "trial_consumed": "✅ 免费次数已消耗！剩余 {} 次",
         "open_new_tab": "🔗 点击按钮将在新标签页中打开应用",
-        "click_launch": "点击启动按钮",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -165,33 +163,18 @@ Let AI become your Chief Quality Engineer.
         "login_failed": "Login failed",
         "register_success": "Registration successful! Please login.",
         "email_exists": "Email already registered. Please login.",
-        "trial_consumed": "✅ Trial consumed! {} remaining",
         "open_new_tab": "🔗 Click button to open app in new tab",
-        "click_launch": "Click Launch button",
     }
 }
 
 @st.cache_resource
 def init_supabase():
-    """初始化 Supabase 客户端"""
     try:
         return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     except Exception as e:
         return None
 
-@st.cache_resource
-def init_supabase_service():
-    """使用 Service Role Key 初始化（用于管理员操作）"""
-    try:
-        service_key = st.secrets.get("SUPABASE_SERVICE_KEY", "")
-        if service_key:
-            return create_client(st.secrets["SUPABASE_URL"], service_key)
-    except Exception:
-        pass
-    return None
-
 supabase = init_supabase()
-supabase_service = init_supabase_service()
 
 # Session State
 if "lang" not in st.session_state:
@@ -268,7 +251,7 @@ def check_and_consume_trial(user_id: str, app_name: str) -> tuple:
     except Exception:
         pass
     
-    return True, remaining - 1, f"剩余 {remaining - 1} 次"
+    return True, remaining - 1, ""
 
 def render_sidebar():
     with st.sidebar:
@@ -492,37 +475,32 @@ def render_main_app():
                     lang_param = "zh" if st.session_state.lang == "zh" else "en"
                     full_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}&lang={lang_param}"
                     
-                    # 使用 HTML 链接在新窗口打开
-                    button_html = f'''
-                    <a href="{full_url}" target="_blank" style="
-                        display: inline-block;
-                        width: 100%;
-                        padding: 8px 16px;
-                        background-color: #ff4b4b;
-                        color: white;
-                        text-align: center;
-                        text-decoration: none;
-                        border-radius: 8px;
-                        font-weight: 500;
-                        cursor: pointer;
-                    ">{t()['launch']}</a>
-                    '''
-                    st.markdown(button_html, unsafe_allow_html=True)
+                    # 消耗免费次数（不显示消息）
+                    allowed, new_remaining, _ = check_and_consume_trial(st.session_state.user_id, app_info["key"])
                     
-                    # 消耗免费次数
-                    allowed, remaining, msg = check_and_consume_trial(st.session_state.user_id, app_info["key"])
                     if allowed:
-                        st.success(t()["trial_consumed"].format(remaining))
+                        button_html = f'''
+                        <a href="{full_url}" target="_blank" style="
+                            display: inline-block;
+                            width: 100%;
+                            padding: 8px 16px;
+                            background-color: #ff4b4b;
+                            color: white;
+                            text-align: center;
+                            text-decoration: none;
+                            border-radius: 8px;
+                            font-weight: 500;
+                            cursor: pointer;
+                        ">{t()['launch']}</a>
+                        '''
+                        st.markdown(button_html, unsafe_allow_html=True)
                     else:
-                        st.error(msg)
+                        st.error("免费次数已用完，请联系管理员升级")
 
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     
-    # 使用 Service Role Key 进行管理员操作
-    db = supabase_service if supabase_service else supabase
-    
-    if not db:
+    if not supabase:
         st.warning("数据库连接失败")
         if st.button(t()["exit_admin"], use_container_width=True):
             st.session_state.admin_mode = False
@@ -531,7 +509,8 @@ def render_admin_panel():
         return
     
     try:
-        response = db.table("profiles").select("*").execute()
+        # 直接查询
+        response = supabase.table("profiles").select("*").execute()
         users = response.data if response.data else []
         
         pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
@@ -579,7 +558,7 @@ def render_admin_panel():
                                                   value=selected_user.get("free_trials_remaining", 10))
                 
                 if st.button(t()["update_btn"], use_container_width=True):
-                    db.table("profiles").update({
+                    supabase.table("profiles").update({
                         "subscription_tier": new_tier,
                         "free_trials_remaining": new_trials
                     }).eq("id", selected_user.get("id")).execute()
@@ -589,13 +568,19 @@ def render_admin_panel():
         st.markdown("---")
         st.subheader(t()["batch_ops"])
         if st.button(t()["reset_all_trials"], use_container_width=True):
-            db.table("profiles").update({"free_trials_remaining": 10}).eq("subscription_tier", "free").execute()
+            supabase.table("profiles").update({"free_trials_remaining": 10}).eq("subscription_tier", "free").execute()
             st.success("All free users trials reset to 10")
             st.rerun()
         
     except Exception as e:
         st.warning(f"无法获取数据: {e}")
-        st.info("请在 Supabase Project Settings → API 中获取 Service Role Key 并添加到 Secrets")
+        st.info("请在 Supabase SQL Editor 中运行 SQL 修复权限")
+        with st.expander("点击查看修复 SQL"):
+            st.code("""
+ALTER TABLE public.profiles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.usage_logs DISABLE ROW LEVEL SECURITY;
+UPDATE public.profiles SET subscription_tier = 'pro' WHERE email = 'techlife2027@gmail.com';
+            """)
     
     st.markdown("---")
     if st.button(t()["exit_admin"], use_container_width=True):
