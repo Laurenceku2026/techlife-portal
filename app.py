@@ -1,7 +1,6 @@
 import streamlit as st
 from supabase import create_client, Client
 from datetime import datetime
-import urllib.parse
 
 # ==================== 页面配置 ====================
 st.set_page_config(
@@ -95,6 +94,7 @@ TEXTS = {
         "email_exists": "该邮箱已注册，请直接登录",
         "trial_consumed": "✅ 免费次数已消耗！剩余 {} 次",
         "open_new_tab": "🔗 点击按钮将在新标签页中打开应用",
+        "click_launch": "点击启动按钮",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -167,17 +167,31 @@ Let AI become your Chief Quality Engineer.
         "email_exists": "Email already registered. Please login.",
         "trial_consumed": "✅ Trial consumed! {} remaining",
         "open_new_tab": "🔗 Click button to open app in new tab",
+        "click_launch": "Click Launch button",
     }
 }
 
 @st.cache_resource
 def init_supabase():
+    """初始化 Supabase 客户端"""
     try:
         return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     except Exception as e:
         return None
 
+@st.cache_resource
+def init_supabase_service():
+    """使用 Service Role Key 初始化（用于管理员操作）"""
+    try:
+        service_key = st.secrets.get("SUPABASE_SERVICE_KEY", "")
+        if service_key:
+            return create_client(st.secrets["SUPABASE_URL"], service_key)
+    except Exception:
+        pass
+    return None
+
 supabase = init_supabase()
+supabase_service = init_supabase_service()
 
 # Session State
 if "lang" not in st.session_state:
@@ -264,8 +278,6 @@ def render_sidebar():
         st.divider()
         st.subheader(t()["contact_header"])
         st.markdown(t()["contact_email"])
-        
-        # 添加群聊链接
         st.markdown(f"[{t()['join_group']}](https://t.me/+YOUR_GROUP_LINK)")
         
         if st.session_state.authenticated:
@@ -342,11 +354,9 @@ def render_login_form():
         st.markdown(f"<h1 style='text-align: center;'>{t()['main_title']}</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='text-align: center; color: gray;'>{t()['main_subtitle']}</p>", unsafe_allow_html=True)
         
-        # 使用 st.form 支持 Enter 键提交
         with st.form("login_form", border=True):
             email = st.text_input(t()["email_placeholder"], key="login_email")
             password = st.text_input(t()["password_placeholder"], type="password", key="login_password")
-            
             submitted = st.form_submit_button(t()["login_btn"], type="primary", use_container_width=True)
             
             if submitted:
@@ -383,7 +393,6 @@ def render_register_form():
             email = st.text_input(t()["email_placeholder"], key="reg_email")
             password = st.text_input(t()["password_placeholder"], type="password", key="reg_password")
             confirm = st.text_input(t()["confirm_password"], type="password", key="reg_confirm")
-            
             submitted = st.form_submit_button(t()["register_submit"], type="primary", use_container_width=True)
             
             if submitted:
@@ -480,24 +489,41 @@ def render_main_app():
                     desc = app_info["desc"] if st.session_state.lang == "zh" else app_info["desc_en"]
                     st.caption(desc)
                 with col_btn:
-                    # 构建带语言参数和用户信息的 URL
                     lang_param = "zh" if st.session_state.lang == "zh" else "en"
                     full_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}&lang={lang_param}"
                     
-                    if st.button(t()["launch"], key=app_info["key"], use_container_width=True):
-                        allowed, remaining, msg = check_and_consume_trial(st.session_state.user_id, app_info["key"])
-                        if allowed:
-                            # 使用 JavaScript 在新窗口打开
-                            st.markdown(f'<script>window.open("{full_url}", "_blank");</script>', unsafe_allow_html=True)
-                            st.success(t()["trial_consumed"].format(remaining))
-                        else:
-                            st.error(msg)
+                    # 使用 HTML 链接在新窗口打开
+                    button_html = f'''
+                    <a href="{full_url}" target="_blank" style="
+                        display: inline-block;
+                        width: 100%;
+                        padding: 8px 16px;
+                        background-color: #ff4b4b;
+                        color: white;
+                        text-align: center;
+                        text-decoration: none;
+                        border-radius: 8px;
+                        font-weight: 500;
+                        cursor: pointer;
+                    ">{t()['launch']}</a>
+                    '''
+                    st.markdown(button_html, unsafe_allow_html=True)
+                    
+                    # 消耗免费次数
+                    allowed, remaining, msg = check_and_consume_trial(st.session_state.user_id, app_info["key"])
+                    if allowed:
+                        st.success(t()["trial_consumed"].format(remaining))
+                    else:
+                        st.error(msg)
 
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     
-    if not supabase:
-        st.warning("Supabase not connected")
+    # 使用 Service Role Key 进行管理员操作
+    db = supabase_service if supabase_service else supabase
+    
+    if not db:
+        st.warning("数据库连接失败")
         if st.button(t()["exit_admin"], use_container_width=True):
             st.session_state.admin_mode = False
             st.session_state.authenticated = False
@@ -505,9 +531,7 @@ def render_admin_panel():
         return
     
     try:
-        # 直接查询需要管理员权限
-        # 如果还是报错，可能需要使用 service_role key
-        response = supabase.table("profiles").select("*").execute()
+        response = db.table("profiles").select("*").execute()
         users = response.data if response.data else []
         
         pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
@@ -555,7 +579,7 @@ def render_admin_panel():
                                                   value=selected_user.get("free_trials_remaining", 10))
                 
                 if st.button(t()["update_btn"], use_container_width=True):
-                    supabase.table("profiles").update({
+                    db.table("profiles").update({
                         "subscription_tier": new_tier,
                         "free_trials_remaining": new_trials
                     }).eq("id", selected_user.get("id")).execute()
@@ -565,19 +589,13 @@ def render_admin_panel():
         st.markdown("---")
         st.subheader(t()["batch_ops"])
         if st.button(t()["reset_all_trials"], use_container_width=True):
-            supabase.table("profiles").update({"free_trials_remaining": 10}).eq("subscription_tier", "free").execute()
+            db.table("profiles").update({"free_trials_remaining": 10}).eq("subscription_tier", "free").execute()
             st.success("All free users trials reset to 10")
             st.rerun()
         
     except Exception as e:
         st.warning(f"无法获取数据: {e}")
-        st.info("请在 Supabase SQL Editor 中运行以下命令修复权限：")
-        st.code("""
--- 修复管理员权限
-ALTER TABLE public.profiles DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all" ON public.profiles FOR ALL USING (true);
-        """)
+        st.info("请在 Supabase Project Settings → API 中获取 Service Role Key 并添加到 Secrets")
     
     st.markdown("---")
     if st.button(t()["exit_admin"], use_container_width=True):
