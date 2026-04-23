@@ -40,6 +40,7 @@ TEXTS = {
 """,
         "contact_header": "📧 联系我们",
         "contact_email": "邮箱: Techlife2027@gmail.com",
+        "join_group": "点我加入群聊",
         
         "main_title": "TechLife Suite 门户",
         "main_subtitle": "一站式工程研发 AI 工具集",
@@ -94,7 +95,6 @@ TEXTS = {
         "email_exists": "该邮箱已注册，请直接登录",
         "trial_consumed": "✅ 免费次数已消耗！剩余 {} 次",
         "open_new_tab": "🔗 点击按钮将在新标签页中打开应用",
-        "enter_to_login": "提示：按 Enter 键可直接登录",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -112,6 +112,7 @@ Let AI become your Chief Quality Engineer.
 """,
         "contact_header": "📧 Contact Us",
         "contact_email": "Email: Techlife2027@gmail.com",
+        "join_group": "Join Group Chat",
         
         "main_title": "TechLife Suite Portal",
         "main_subtitle": "One-stop AI Toolkit for R&D Engineering",
@@ -166,7 +167,6 @@ Let AI become your Chief Quality Engineer.
         "email_exists": "Email already registered. Please login.",
         "trial_consumed": "✅ Trial consumed! {} remaining",
         "open_new_tab": "🔗 Click button to open app in new tab",
-        "enter_to_login": "Tip: Press Enter to login",
     }
 }
 
@@ -265,6 +265,9 @@ def render_sidebar():
         st.subheader(t()["contact_header"])
         st.markdown(t()["contact_email"])
         
+        # 添加群聊链接
+        st.markdown(f"[{t()['join_group']}](https://t.me/+YOUR_GROUP_LINK)")
+        
         if st.session_state.authenticated:
             st.divider()
             st.markdown(f"**👤 {st.session_state.user_email}**")
@@ -313,10 +316,12 @@ def render_admin_login_form():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(f"<h2 style='text-align: center;'>{t()['admin_login_title']}</h2>", unsafe_allow_html=True)
-        with st.container(border=True):
+        with st.form("admin_login_form", border=True):
             username = st.text_input(t()["admin_username"], key="admin_username")
             password = st.text_input(t()["admin_password"], type="password", key="admin_password")
-            if st.button(t()["admin_login_btn"], use_container_width=True, type="primary"):
+            submitted = st.form_submit_button(t()["admin_login_btn"], type="primary", use_container_width=True)
+            
+            if submitted:
                 if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
                     st.session_state.admin_mode = True
                     st.session_state.show_admin_login = False
@@ -326,36 +331,25 @@ def render_admin_login_form():
                     st.rerun()
                 else:
                     st.error(t()["admin_error"])
+        
         if st.button(t()["admin_back"], use_container_width=True):
             st.session_state.show_admin_login = False
             st.rerun()
 
 def render_login_form():
-    # 使用 JavaScript 实现 Enter 键登录
-    st.markdown("""
-    <script>
-    document.addEventListener('keypress', function(event) {
-        if (event.key === 'Enter') {
-            const loginBtn = document.querySelector('button[data-testid="baseButton-primary"]');
-            if (loginBtn && loginBtn.innerText === '登录') {
-                loginBtn.click();
-            }
-        }
-    });
-    </script>
-    """, unsafe_allow_html=True)
-    
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         st.markdown(f"<h1 style='text-align: center;'>{t()['main_title']}</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='text-align: center; color: gray;'>{t()['main_subtitle']}</p>", unsafe_allow_html=True)
-        st.caption(t()["enter_to_login"])
         
-        with st.container(border=True):
+        # 使用 st.form 支持 Enter 键提交
+        with st.form("login_form", border=True):
             email = st.text_input(t()["email_placeholder"], key="login_email")
             password = st.text_input(t()["password_placeholder"], type="password", key="login_password")
             
-            if st.button(t()["login_btn"], use_container_width=True, type="primary"):
+            submitted = st.form_submit_button(t()["login_btn"], type="primary", use_container_width=True)
+            
+            if submitted:
                 if email and password and supabase:
                     try:
                         response = supabase.auth.sign_in_with_password({
@@ -385,12 +379,14 @@ def render_register_form():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(f"<h2 style='text-align: center;'>{t()['register_title']}</h2>", unsafe_allow_html=True)
-        with st.container(border=True):
+        with st.form("register_form", border=True):
             email = st.text_input(t()["email_placeholder"], key="reg_email")
             password = st.text_input(t()["password_placeholder"], type="password", key="reg_password")
             confirm = st.text_input(t()["confirm_password"], type="password", key="reg_confirm")
             
-            if st.button(t()["register_submit"], use_container_width=True, type="primary"):
+            submitted = st.form_submit_button(t()["register_submit"], type="primary", use_container_width=True)
+            
+            if submitted:
                 if not email or not password:
                     st.warning("请填写邮箱和密码")
                 elif password != confirm:
@@ -488,11 +484,13 @@ def render_main_app():
                     lang_param = "zh" if st.session_state.lang == "zh" else "en"
                     full_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}&lang={lang_param}"
                     
-                    # 使用 link_button 在新窗口打开
-                    if st.link_button(t()["launch"], full_url, use_container_width=True):
-                        # 消耗免费次数
+                    if st.button(t()["launch"], key=app_info["key"], use_container_width=True):
                         allowed, remaining, msg = check_and_consume_trial(st.session_state.user_id, app_info["key"])
-                        if not allowed:
+                        if allowed:
+                            # 使用 JavaScript 在新窗口打开
+                            st.markdown(f'<script>window.open("{full_url}", "_blank");</script>', unsafe_allow_html=True)
+                            st.success(t()["trial_consumed"].format(remaining))
+                        else:
                             st.error(msg)
 
 def render_admin_panel():
@@ -507,10 +505,10 @@ def render_admin_panel():
         return
     
     try:
-        # 方法：尝试使用不同的表名或直接查询
-        # 注意：如果需要管理员权限，需要在 Supabase 中设置
+        # 直接查询需要管理员权限
+        # 如果还是报错，可能需要使用 service_role key
         response = supabase.table("profiles").select("*").execute()
-        users = response.data
+        users = response.data if response.data else []
         
         pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
         
@@ -534,6 +532,8 @@ def render_admin_panel():
                     t()["trials_left"]: user.get("free_trials_remaining", 10),
                 })
             st.dataframe(user_data, use_container_width=True)
+        else:
+            st.info("暂无用户数据")
         
         st.markdown("---")
         st.subheader(t()["subscription_mgmt"])
@@ -576,9 +576,7 @@ def render_admin_panel():
 -- 修复管理员权限
 ALTER TABLE public.profiles DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Enable all for authenticated users" ON public.profiles
-    FOR ALL USING (true);
+CREATE POLICY "Allow all" ON public.profiles FOR ALL USING (true);
         """)
     
     st.markdown("---")
