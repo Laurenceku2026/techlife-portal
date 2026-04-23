@@ -16,9 +16,9 @@ ADMIN_EMAIL = "techlife2027@gmail.com"
 
 # 三个 APP 的 URL
 APP_URLS = {
-    "feasibility": "https://appuct-feasibility-analysis.streamlit.app",
-    "dqa": "https://ai-design-dfmea.streamlit.app",
-    "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app"
+    "feasibility": st.secrets.get("APP_FEASIBILITY_URL", "https://appuct-feasibility-analysis.streamlit.app"),
+    "dqa": st.secrets.get("APP_DQA_URL", "https://ai-design-dfmea.streamlit.app"),
+    "paravary": st.secrets.get("APP_PARAVARY_URL", "https://dfss-stack-tolerance-analysis.streamlit.app")
 }
 
 # ==================== 多语言配置 ====================
@@ -167,26 +167,25 @@ Let AI become your Chief Quality Engineer.
     }
 }
 
-@st.cache_resource
-def init_supabase():
+def init_supabase_public():
     """使用 anon key 初始化（用于用户操作）"""
     try:
         return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    except Exception:
+    except Exception as e:
+        st.error(f"Supabase 连接失败: {e}")
         return None
 
-@st.cache_resource
 def init_supabase_admin():
-    """使用 service key 初始化（用于管理员操作）"""
+    """使用 service role key 初始化（用于管理员操作）"""
     try:
-        service_key = st.secrets.get("SUPABASE_SERVICE_KEY", "")
+        service_key = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", "")
         if service_key:
             return create_client(st.secrets["SUPABASE_URL"], service_key)
-    except Exception:
-        pass
+    except Exception as e:
+        st.error(f"Admin client 初始化失败: {e}")
     return None
 
-supabase = init_supabase()
+supabase = init_supabase_public()
 supabase_admin = init_supabase_admin()
 
 # Session State
@@ -212,7 +211,7 @@ def t():
 
 def get_user_profile(user_id: str):
     if not supabase or not user_id or user_id == "admin":
-        return {"subscription_tier": "free", "free_trials_remaining": 10}
+        return {"subscription_tier": "free", "free_trials_remaining": 30}
     try:
         response = supabase.table("profiles")\
             .select("subscription_tier, free_trials_remaining")\
@@ -220,9 +219,9 @@ def get_user_profile(user_id: str):
             .execute()
         if response.data:
             return response.data[0]
-    except Exception:
-        pass
-    return {"subscription_tier": "free", "free_trials_remaining": 10}
+    except Exception as e:
+        print(f"Error: {e}")
+    return {"subscription_tier": "free", "free_trials_remaining": 30}
 
 def get_user_total_usage(user_id: str):
     if not supabase or not user_id or user_id == "admin":
@@ -237,32 +236,38 @@ def get_user_total_usage(user_id: str):
         return 0
 
 def check_and_consume_trial(user_id: str, app_name: str) -> tuple:
+    """检查并消耗免费次数，返回 (是否允许, 剩余次数, 消息)"""
     if not supabase or user_id == "admin":
-        return True, -1, "Admin mode"
+        return True, -1, ""
     
     profile = get_user_profile(user_id)
     tier = profile.get("subscription_tier", "free")
-    remaining = profile.get("free_trials_remaining", 10)
+    remaining = profile.get("free_trials_remaining", 30)
     
+    # 专业版无限使用
     if tier == "pro":
-        return True, -1, "Pro unlimited"
+        return True, -1, ""
     
+    # 免费版检查剩余次数
     if remaining <= 0:
         return False, 0, "免费次数已用完，请联系管理员升级"
     
     try:
+        # 更新剩余次数
         supabase.table("profiles").update({
             "free_trials_remaining": remaining - 1
         }).eq("id", user_id).execute()
         
+        # 记录使用日志
         supabase.table("usage_logs").insert({
             "user_id": user_id,
             "app_name": app_name,
             "analysis_count": 1,
             "used_at": datetime.now().isoformat()
         }).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Error consuming trial: {e}")
+        return False, remaining, f"记录失败: {e}"
     
     return True, remaining - 1, ""
 
@@ -274,14 +279,13 @@ def render_sidebar():
         st.divider()
         st.subheader(t()["contact_header"])
         st.markdown(t()["contact_email"])
-        st.markdown(f"[{t()['join_group']}](https://t.me/+YOUR_GROUP_LINK)")
         
         if st.session_state.authenticated:
             st.divider()
             st.markdown(f"**👤 {st.session_state.user_email}**")
             profile = get_user_profile(st.session_state.user_id)
             tier = profile.get("subscription_tier", "free")
-            remaining = profile.get("free_trials_remaining", 10)
+            remaining = profile.get("free_trials_remaining", 30)
             total_usage = get_user_total_usage(st.session_state.user_id)
             
             st.caption(f"📋 {t()['subscription']}: {'💎 Pro' if tier == 'pro' else '🔒 Free'}")
@@ -434,7 +438,7 @@ def render_main_app():
     with col2:
         profile = get_user_profile(st.session_state.user_id)
         tier = profile.get("subscription_tier", "free")
-        remaining = profile.get("free_trials_remaining", 10)
+        remaining = profile.get("free_trials_remaining", 30)
         total_usage = get_user_total_usage(st.session_state.user_id)
         
         st.markdown(f"<h3 style='text-align: center;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
@@ -506,17 +510,21 @@ def render_main_app():
                         ">{t()['launch']}</a>
                         '''
                         st.markdown(button_html, unsafe_allow_html=True)
+                        # 刷新页面显示剩余次数
+                        if new_remaining >= 0 and tier == "free":
+                            st.rerun()
                     else:
                         st.error("免费次数已用完，请联系管理员升级")
 
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     
-    # 使用 admin client 或普通 client
+    # 使用 admin client
     db = supabase_admin if supabase_admin else supabase
     
     if not db:
         st.warning("数据库连接失败")
+        st.info("请检查 Supabase Service Role Key 配置")
         if st.button(t()["exit_admin"], use_container_width=True):
             st.session_state.admin_mode = False
             st.session_state.authenticated = False
@@ -546,7 +554,7 @@ def render_admin_panel():
                 user_data.append({
                     t()["email_col"]: user.get("email"),
                     t()["subscription_col"]: "💎 Pro" if user.get("subscription_tier") == "pro" else "🔒 Free",
-                    t()["trials_left"]: user.get("free_trials_remaining", 10),
+                    t()["trials_left"]: user.get("free_trials_remaining", 30),
                 })
             st.dataframe(user_data, use_container_width=True)
         else:
@@ -569,7 +577,7 @@ def render_admin_panel():
                                             index=0 if current_tier == "free" else 1)
                 with col_sub2:
                     new_trials = st.number_input(t()["set_trials"], min_value=0, max_value=100, 
-                                                  value=selected_user.get("free_trials_remaining", 10))
+                                                  value=selected_user.get("free_trials_remaining", 30))
                 
                 if st.button(t()["update_btn"], use_container_width=True):
                     db.table("profiles").update({
@@ -582,8 +590,8 @@ def render_admin_panel():
         st.markdown("---")
         st.subheader(t()["batch_ops"])
         if st.button(t()["reset_all_trials"], use_container_width=True):
-            db.table("profiles").update({"free_trials_remaining": 10}).eq("subscription_tier", "free").execute()
-            st.success("All free users trials reset to 10")
+            db.table("profiles").update({"free_trials_remaining": 30}).eq("subscription_tier", "free").execute()
+            st.success("所有免费用户次数已重置为 30 次")
             st.rerun()
         
     except Exception as e:
