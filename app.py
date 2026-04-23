@@ -9,9 +9,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# ==================== 多语言配置 ====================
+# ==================== 多语言配置（完整中英文）====================
 TEXTS = {
     "zh": {
+        # 侧边栏
         "sidebar_title": "TechLife Suite",
         "about_header": "📘 关于系统",
         "about_text": """
@@ -28,6 +29,7 @@ TEXTS = {
         "contact_header": "📧 联系我们",
         "contact_email": "邮箱: Techlife2027@gmail.com",
         
+        # 主界面
         "main_title": "TechLife Suite 门户",
         "main_subtitle": "一站式工程研发 AI 工具集",
         "email_placeholder": "请输入邮箱",
@@ -49,9 +51,11 @@ TEXTS = {
         "nav_title": "应用导航",
         "admin_panel": "管理员面板",
         
+        # 按钮
         "chinese": "中文",
         "english": "English",
         
+        # 管理员登录
         "admin_login_title": "管理员登录",
         "admin_username": "用户名",
         "admin_password": "密码",
@@ -59,6 +63,7 @@ TEXTS = {
         "admin_back": "返回用户登录",
         "admin_error": "用户名或密码错误",
         
+        # 管理员面板
         "total_users": "总用户数",
         "pro_users": "专业版用户",
         "free_users": "免费版用户",
@@ -73,14 +78,17 @@ TEXTS = {
         "subscription_col": "订阅",
         "trials_left": "剩余次数",
         "total_used": "总使用次数",
-        "reset_trials": "重置免费次数",
         "reset_all_trials": "重置所有用户免费次数",
+        "batch_ops": "批量操作",
     },
     "en": {
+        # Sidebar
         "sidebar_title": "TechLife Suite",
         "about_header": "📘 About System",
         "about_text": """
 **TechLife Suite** is an **AI-empowered DFSS (Design for Six Sigma)** platform for R&D engineers.
+
+We are committed to simplifying complex engineering design processes through AI technology, helping teams achieve:
 
 - **Intelligent Requirement Analysis**: Decompose Voice of Customer (VOC).
 - **Automated Risk Assessment**: AI-assisted DFMEA generation.
@@ -91,6 +99,7 @@ Let AI become your Chief Quality Engineer.
         "contact_header": "📧 Contact Us",
         "contact_email": "Email: Techlife2027@gmail.com",
         
+        # Main
         "main_title": "TechLife Suite Portal",
         "main_subtitle": "One-stop AI Toolkit for R&D Engineering",
         "email_placeholder": "Enter your email",
@@ -112,9 +121,11 @@ Let AI become your Chief Quality Engineer.
         "nav_title": "App Navigation",
         "admin_panel": "Admin Panel",
         
+        # Buttons
         "chinese": "中文",
         "english": "English",
         
+        # Admin login
         "admin_login_title": "Admin Login",
         "admin_username": "Username",
         "admin_password": "Password",
@@ -122,6 +133,7 @@ Let AI become your Chief Quality Engineer.
         "admin_back": "Back to User Login",
         "admin_error": "Invalid credentials",
         
+        # Admin panel
         "total_users": "Total Users",
         "pro_users": "Pro Users",
         "free_users": "Free Users",
@@ -136,20 +148,26 @@ Let AI become your Chief Quality Engineer.
         "subscription_col": "Subscription",
         "trials_left": "Trials Left",
         "total_used": "Total Used",
-        "reset_trials": "Reset Trials",
         "reset_all_trials": "Reset All Users Trials",
+        "batch_ops": "Batch Operations",
     }
 }
 
 ADMIN_USERNAME = "Laurence_ku"
 ADMIN_PASSWORD = "Ku_product$2026"
 
+# 三个 APP 的 URL
+APP_URLS = {
+    "feasibility": "https://appuct-feasibility-analysis.streamlit.app",
+    "dqa": "https://ai-design-dfmea.streamlit.app",  # 注意：去掉重复的 https://
+    "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app"
+}
+
 @st.cache_resource
 def init_supabase():
     try:
         return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     except Exception as e:
-        st.error(f"Supabase 连接失败: {e}")
         return None
 
 supabase = init_supabase()
@@ -178,7 +196,7 @@ def t():
 def get_user_profile(user_id: str):
     """获取用户资料"""
     if not supabase or not user_id or user_id == "admin":
-        return {"subscription_tier": "free", "free_trials_remaining": 10, "total_usage": 0}
+        return {"subscription_tier": "free", "free_trials_remaining": 10}
     try:
         response = supabase.table("profiles")\
             .select("subscription_tier, free_trials_remaining")\
@@ -187,7 +205,7 @@ def get_user_profile(user_id: str):
         if response.data:
             return response.data[0]
     except Exception as e:
-        print(f"Error fetching profile: {e}")
+        print(f"Error: {e}")
     return {"subscription_tier": "free", "free_trials_remaining": 10}
 
 def get_user_total_usage(user_id: str):
@@ -200,38 +218,29 @@ def get_user_total_usage(user_id: str):
             .eq("user_id", user_id)\
             .execute()
         return sum([log.get("analysis_count", 1) for log in response.data])
-    except Exception as e:
-        print(f"Error fetching usage: {e}")
+    except Exception:
         return 0
 
 def check_and_consume_trial(user_id: str, app_name: str) -> tuple:
     """检查并消耗免费次数"""
     if not supabase or user_id == "admin":
-        return True, -1, "管理员模式"
+        return True, -1, "Admin mode"
     
     profile = get_user_profile(user_id)
     tier = profile.get("subscription_tier", "free")
     remaining = profile.get("free_trials_remaining", 10)
     
-    # 专业版无限使用
     if tier == "pro":
-        expiry = profile.get("subscription_expires_at")
-        if expiry and datetime.now() > datetime.fromisoformat(expiry):
-            return False, 0, "订阅已过期"
-        return True, -1, "专业版无限使用"
+        return True, -1, "Pro unlimited"
     
-    # 免费版检查剩余次数
     if remaining <= 0:
         return False, 0, "免费次数已用完，请联系管理员升级"
     
-    # 记录使用
     try:
-        # 更新剩余次数
         supabase.table("profiles").update({
             "free_trials_remaining": remaining - 1
         }).eq("id", user_id).execute()
         
-        # 记录使用日志
         supabase.table("usage_logs").insert({
             "user_id": user_id,
             "app_name": app_name,
@@ -239,7 +248,7 @@ def check_and_consume_trial(user_id: str, app_name: str) -> tuple:
             "used_at": datetime.now().isoformat()
         }).execute()
     except Exception as e:
-        print(f"Error recording usage: {e}")
+        print(f"Error: {e}")
     
     return True, remaining - 1, f"剩余 {remaining - 1} 次"
 
@@ -260,7 +269,7 @@ def render_sidebar():
             remaining = profile.get("free_trials_remaining", 10)
             total_usage = get_user_total_usage(st.session_state.user_id)
             
-            st.caption(f"📋 {t()['subscription']}: {'💎 专业版' if tier == 'pro' else '🔒 免费版'}")
+            st.caption(f"📋 {t()['subscription']}: {'💎 Pro' if tier == 'pro' else '🔒 Free'}")
             if tier == "free":
                 st.caption(f"🎫 {t()['free_trial']}: {remaining}")
                 st.caption(f"📊 {t()['total_usage']}: {total_usage}")
@@ -292,7 +301,7 @@ def render_top_buttons():
                 st.session_state.lang = "en"
                 st.rerun()
     with col4:
-        if st.button("⚙️", key="gear_btn", help="管理员登录", use_container_width=True):
+        if st.button("⚙️", key="gear_btn", help="Admin Login", use_container_width=True):
             st.session_state.show_admin_login = True
             st.rerun()
 
@@ -339,9 +348,9 @@ def render_login_form():
                         st.session_state.user_email = response.user.email
                         st.rerun()
                     except Exception as e:
-                        st.error(f"登录失败: {str(e)}")
+                        st.error(f"Login failed: {str(e)}")
                 else:
-                    st.warning("请输入邮箱和密码")
+                    st.warning("Please enter email and password")
         
         col_reg, col_forgot = st.columns(2)
         with col_reg:
@@ -364,26 +373,26 @@ def render_register_form():
             
             if st.button(t()["register_submit"], use_container_width=True, type="primary"):
                 if not email or not password:
-                    st.warning("请填写邮箱和密码")
+                    st.warning("Please fill in email and password")
                 elif password != confirm:
-                    st.warning("两次输入的密码不一致")
+                    st.warning("Passwords do not match")
                 elif len(password) < 6:
-                    st.warning("密码长度至少6位")
+                    st.warning("Password must be at least 6 characters")
                 elif supabase:
                     try:
                         response = supabase.auth.sign_up({
                             "email": email,
                             "password": password
                         })
-                        st.success("注册成功！请登录")
+                        st.success("Registration successful! Please login.")
                         st.session_state.show_register = False
                         st.rerun()
                     except Exception as e:
                         error_msg = str(e)
                         if "User already registered" in error_msg:
-                            st.error("该邮箱已注册，请直接登录")
+                            st.error("Email already registered. Please login.")
                         else:
-                            st.error(f"注册失败: {error_msg}")
+                            st.error(f"Registration failed: {error_msg}")
         
         if st.button(t()["back_to_login"], use_container_width=True):
             st.session_state.show_register = False
@@ -394,7 +403,7 @@ def render_reset_password_form():
     with col2:
         st.markdown(f"<h2 style='text-align: center;'>{t()['forgot_password']}</h2>", unsafe_allow_html=True)
         with st.container(border=True):
-            st.info("请联系管理员重置密码")
+            st.info("Please contact admin to reset password")
             st.markdown(f"📧 {t()['contact_email']}")
         if st.button(t()["back_to_login"], use_container_width=True):
             st.session_state.reset_password = False
@@ -413,7 +422,7 @@ def render_main_app():
         
         col_sub1, col_sub2, col_sub3 = st.columns(3)
         with col_sub1:
-            st.metric(t()["subscription"], "💎 Pro" if tier == "pro" else "🔒 免费版")
+            st.metric(t()["subscription"], "💎 Pro" if tier == "pro" else "🔒 Free")
         with col_sub2:
             if tier == "free":
                 st.metric(t()["free_trial"], remaining)
@@ -428,18 +437,21 @@ def render_main_app():
         apps = {
             "📊 Product Feasibility": {
                 "desc": "产品可行性分析 - 挖掘市场与用户之声",
+                "desc_en": "Product Feasibility - Voice of Market & Users",
                 "key": "feasibility",
-                "url": st.secrets.get("APP_FEASIBILITY_URL", "#")
+                "url": APP_URLS["feasibility"]
             },
             "🔍 AI-DQA": {
                 "desc": "设计风险分析 - AI赋能DFMEA",
+                "desc_en": "Design Risk Analysis - AI-powered DFMEA",
                 "key": "dqa",
-                "url": st.secrets.get("APP_DQA_URL", "#")
+                "url": APP_URLS["dqa"]
             },
             "📈 Para-Vary": {
                 "desc": "蒙特卡洛模拟 - 累积公差仿真",
+                "desc_en": "Monte Carlo Simulation - Tolerance Stack-up",
                 "key": "paravary",
-                "url": st.secrets.get("APP_PARAVARY_URL", "#")
+                "url": APP_URLS["paravary"]
             }
         }
         
@@ -449,16 +461,15 @@ def render_main_app():
                 with col_name:
                     st.markdown(f"**{app_name}**")
                 with col_desc:
-                    st.caption(app_info["desc"])
+                    desc = app_info["desc"] if st.session_state.lang == "zh" else app_info["desc_en"]
+                    st.caption(desc)
                 with col_btn:
-                    if st.button("启动", key=app_info["key"], use_container_width=True):
+                    if st.button("启动" if st.session_state.lang == "zh" else "Launch", 
+                                 key=app_info["key"], use_container_width=True):
                         allowed, remaining, msg = check_and_consume_trial(st.session_state.user_id, app_info["key"])
                         if allowed:
-                            if app_info["url"] != "#":
-                                redirect_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}"
-                                st.markdown(f'<meta http-equiv="refresh" content="0; url={redirect_url}">', unsafe_allow_html=True)
-                            else:
-                                st.info("子应用即将上线")
+                            redirect_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}"
+                            st.markdown(f'<meta http-equiv="refresh" content="0; url={redirect_url}">', unsafe_allow_html=True)
                         else:
                             st.error(msg)
 
@@ -466,7 +477,7 @@ def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     
     if not supabase:
-        st.warning("Supabase 未连接")
+        st.warning("Supabase not connected")
         if st.button(t()["exit_admin"], use_container_width=True):
             st.session_state.admin_mode = False
             st.session_state.authenticated = False
@@ -474,91 +485,75 @@ def render_admin_panel():
         return
     
     try:
-        # 获取所有用户
-        users = supabase.table("profiles").select("*").execute()
+        # 使用 service_role key 或者直接查询
+        # 注意：需要在 secrets 中添加 SUPABASE_SERVICE_KEY
+        response = supabase.table("profiles").select("*").execute()
+        users = response.data
         
         # 统计数据
-        pro_users = [u for u in users.data if u.get("subscription_tier") == "pro"]
-        free_users = [u for u in users.data if u.get("subscription_tier") == "free"]
+        pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric(t()["total_users"], len(users.data))
+            st.metric(t()["total_users"], len(users))
         with col2:
             st.metric(t()["pro_users"], len(pro_users))
         with col3:
-            st.metric(t()["free_users"], len(free_users))
+            st.metric(t()["free_users"], len(users) - len(pro_users))
         
         st.markdown("---")
-        
-        # 用户列表
         st.subheader(t()["user_list"])
         
-        if users.data:
+        if users:
             user_data = []
-            for user in users.data:
-                # 获取使用次数
-                usage_response = supabase.table("usage_logs")\
-                    .select("analysis_count")\
-                    .eq("user_id", user.get("id"))\
-                    .execute()
-                total_used = sum([log.get("analysis_count", 1) for log in usage_response.data])
-                
+            for user in users:
                 user_data.append({
                     t()["email_col"]: user.get("email"),
                     t()["subscription_col"]: "💎 Pro" if user.get("subscription_tier") == "pro" else "🔒 Free",
                     t()["trials_left"]: user.get("free_trials_remaining", 10),
-                    t()["total_used"]: total_used,
                     "user_id": user.get("id")
                 })
             st.dataframe(user_data, use_container_width=True)
         else:
-            st.info("暂无用户数据")
+            st.info("No user data")
         
         st.markdown("---")
-        
-        # 订阅管理
         st.subheader(t()["subscription_mgmt"])
         
-        if users.data:
-            user_options = [f"{u.get('email')} ({u.get('subscription_tier')})" for u in users.data]
+        if users:
+            user_options = [f"{u.get('email')} ({u.get('subscription_tier')})" for u in users]
             selected_user_display = st.selectbox(t()["select_user"], user_options)
             selected_email = selected_user_display.split(" ")[0] if selected_user_display else None
-            selected_user = next((u for u in users.data if u.get("email") == selected_email), None)
+            selected_user = next((u for u in users if u.get("email") == selected_email), None)
             
             if selected_user:
                 col_sub1, col_sub2 = st.columns(2)
                 with col_sub1:
+                    current_tier = selected_user.get("subscription_tier", "free")
                     new_tier = st.selectbox(t()["set_subscription"], ["free", "pro"], 
-                                            index=0 if selected_user.get("subscription_tier") == "free" else 1)
+                                            index=0 if current_tier == "free" else 1)
                 with col_sub2:
                     new_trials = st.number_input(t()["set_trials"], min_value=0, max_value=100, 
                                                   value=selected_user.get("free_trials_remaining", 10))
                 
                 if st.button(t()["update_btn"], use_container_width=True):
-                    expires_at = None
-                    if new_tier == "pro":
-                        expires_at = (datetime.now() + timedelta(days=30)).isoformat()
-                    
                     supabase.table("profiles").update({
                         "subscription_tier": new_tier,
-                        "subscription_expires_at": expires_at,
                         "free_trials_remaining": new_trials
                     }).eq("id", selected_user.get("id")).execute()
-                    st.success(f"已更新 {selected_email}")
+                    st.success(f"Updated {selected_email}")
                     st.rerun()
         
         st.markdown("---")
-        
-        # 批量操作
-        st.subheader("批量操作")
+        st.subheader(t()["batch_ops"])
         if st.button(t()["reset_all_trials"], use_container_width=True):
             supabase.table("profiles").update({"free_trials_remaining": 10}).eq("subscription_tier", "free").execute()
-            st.success("所有免费用户次数已重置为10次")
+            st.success("All free users trials reset to 10")
             st.rerun()
         
     except Exception as e:
-        st.warning(f"无法获取数据: {e}")
+        st.warning(f"Unable to fetch data: {e}")
+        st.info("Please make sure RLS policies are configured correctly")
     
     st.markdown("---")
     if st.button(t()["exit_admin"], use_container_width=True):
