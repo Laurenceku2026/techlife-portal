@@ -7,7 +7,7 @@ st.set_page_config(
     page_title="TechLife Suite - AI Engineering Platform",
     page_icon="🔧",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded"  # 确保侧边栏展开
 )
 
 # ==================== 多语言配置 ====================
@@ -130,6 +130,10 @@ if "user_email" not in st.session_state:
     st.session_state.user_email = None
 if "show_register" not in st.session_state:
     st.session_state.show_register = False
+if "reset_password" not in st.session_state:
+    st.session_state.reset_password = False
+if "admin_mode" not in st.session_state:
+    st.session_state.admin_mode = False
 
 def t():
     return TEXTS[st.session_state.lang]
@@ -178,7 +182,17 @@ def check_and_consume_trial(user_id: str, app_name: str) -> tuple:
     
     return True, remaining - used_today - 1, f"剩余 {remaining - used_today - 1} 次"
 
-# ==================== 侧边栏 ====================
+def update_user_subscription(user_id: str, tier: str, months: int = 1):
+    expires_at = None
+    if tier == "pro":
+        expires_at = (datetime.now() + timedelta(days=30 * months)).isoformat()
+    
+    supabase.table("profiles").update({
+        "subscription_tier": tier,
+        "subscription_expires_at": expires_at
+    }).eq("id", user_id).execute()
+
+# ==================== 侧边栏（始终显示）====================
 def render_sidebar():
     with st.sidebar:
         st.title(t()["sidebar_title"])
@@ -190,25 +204,55 @@ def render_sidebar():
         
         st.subheader(t()["contact_header"])
         st.markdown(t()["contact_email"])
+        
+        # 如果已登录，显示用户信息和登出按钮
+        if st.session_state.authenticated:
+            st.divider()
+            st.markdown(f"**👤 {st.session_state.user_email}**")
+            
+            profile = get_user_subscription(st.session_state.user_id)
+            tier = profile.get("subscription_tier", "free")
+            st.caption(f"订阅: {'💎 专业版' if tier == 'pro' else '🔒 免费版'}")
+            
+            if st.button(t()["logout"], use_container_width=True):
+                try:
+                    supabase.auth.sign_out()
+                except:
+                    pass
+                st.session_state.authenticated = False
+                st.session_state.user_id = None
+                st.session_state.user_email = None
+                st.session_state.admin_mode = False
+                st.rerun()
 
-# ==================== 登录表单 ====================
-def render_login_form():
-    # 语言切换按钮（右上角）
-    col_lang1, col_lang2, col_lang3, col_lang4 = st.columns([8, 1, 1, 1])
-    with col_lang2:
-        if st.button("中文", key="zh_btn", use_container_width=True, 
+# ==================== 右上角按钮 ====================
+def render_top_buttons():
+    col1, col2, col3, col4, col5 = st.columns([8, 1, 1, 1, 1])
+    with col2:
+        if st.button("中文", key="zh_btn", use_container_width=True,
                      disabled=st.session_state.lang == "zh"):
             st.session_state.lang = "zh"
             st.rerun()
-    with col_lang3:
+    with col3:
         if st.button("English", key="en_btn", use_container_width=True,
                      disabled=st.session_state.lang == "en"):
             st.session_state.lang = "en"
             st.rerun()
-    with col_lang4:
-        # 管理员齿轮图标（预留）
-        st.markdown("⚙️", help="管理员入口")
-    
+    with col4:
+        # 管理员齿轮图标
+        if st.session_state.authenticated:
+            admin_emails = ["techlife2027@gmail.com", "laurence_ku2002@yahoo.com.hk"]
+            if st.session_state.user_email in admin_emails:
+                if st.button("⚙️", key="admin_btn", help="管理员面板", use_container_width=True):
+                    st.session_state.admin_mode = not st.session_state.admin_mode
+                    st.rerun()
+            else:
+                st.button("⚙️", key="admin_btn_disabled", disabled=True, use_container_width=True)
+        else:
+            st.button("⚙️", key="admin_btn_hidden", disabled=True, use_container_width=True)
+
+# ==================== 登录表单 ====================
+def render_login_form():
     # 主标题（居中）
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
@@ -223,7 +267,6 @@ def render_login_form():
             email = st.text_input(t()["email_placeholder"], key="login_email")
             password = st.text_input(t()["password_placeholder"], type="password", key="login_password")
             
-            # 登录按钮
             if st.button(t()["login_btn"], use_container_width=True, type="primary"):
                 if email and password:
                     try:
@@ -248,28 +291,13 @@ def render_login_form():
                 st.rerun()
         with col_forgot:
             if st.button(t()["forgot_password"], use_container_width=True):
-                st.info("请联系管理员重置密码: Techlife2027@gmail.com")
+                st.session_state.reset_password = True
+                st.rerun()
         
         st.caption(t()["demo_hint"])
 
 # ==================== 注册表单 ====================
 def render_register_form():
-    # 语言切换按钮
-    col_lang1, col_lang2, col_lang3, col_lang4 = st.columns([8, 1, 1, 1])
-    with col_lang2:
-        if st.button("中文", key="zh_btn_reg", use_container_width=True,
-                     disabled=st.session_state.lang == "zh"):
-            st.session_state.lang = "zh"
-            st.rerun()
-    with col_lang3:
-        if st.button("English", key="en_btn_reg", use_container_width=True,
-                     disabled=st.session_state.lang == "en"):
-            st.session_state.lang = "en"
-            st.rerun()
-    with col_lang4:
-        st.markdown("⚙️")
-    
-    # 注册表单
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(f"<h2 style='text-align: center;'>{t()['register_title']}</h2>", unsafe_allow_html=True)
@@ -307,34 +335,23 @@ def render_register_form():
             st.session_state.show_register = False
             st.rerun()
 
-# ==================== 主应用（登录后） ====================
+# ==================== 忘记密码表单 ====================
+def render_reset_password_form():
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown(f"<h2 style='text-align: center;'>{t()['forgot_password']}</h2>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        with st.container(border=True):
+            st.info("请联系管理员重置密码")
+            st.markdown(f"📧 {t()['contact_email']}")
+        
+        if st.button(t()["back_to_login"], use_container_width=True):
+            st.session_state.reset_password = False
+            st.rerun()
+
+# ==================== 主应用（登录后）====================
 def render_main_app():
-    # 语言切换按钮（右上角）
-    col_lang1, col_lang2, col_lang3, col_lang4 = st.columns([8, 1, 1, 1])
-    with col_lang2:
-        if st.button("中文", key="zh_btn_app", use_container_width=True,
-                     disabled=st.session_state.lang == "zh"):
-            st.session_state.lang = "zh"
-            st.rerun()
-    with col_lang3:
-        if st.button("English", key="en_btn_app", use_container_width=True,
-                     disabled=st.session_state.lang == "en"):
-            st.session_state.lang = "en"
-            st.rerun()
-    with col_lang4:
-        # 管理员齿轮（仅管理员可见）
-        admin_emails = ["techlife2027@gmail.com", "laurence_ku2002@yahoo.com.hk"]
-        if st.session_state.user_email in admin_emails:
-            if st.button("⚙️", key="admin_btn", help="管理员面板"):
-                st.session_state.admin_mode = not st.session_state.get("admin_mode", False)
-                st.rerun()
-        else:
-            st.markdown("⚙️")
-    
-    # 侧边栏
-    render_sidebar()
-    
-    # 主内容区域
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         # 获取用户信息
@@ -400,19 +417,6 @@ def render_main_app():
                             st.markdown(f'<meta http-equiv="refresh" content="0; url={redirect_url}">', unsafe_allow_html=True)
                         else:
                             st.error(msg)
-        
-        st.markdown("---")
-        
-        # 登出按钮
-        if st.button(t()["logout"], use_container_width=True):
-            try:
-                supabase.auth.sign_out()
-            except:
-                pass
-            st.session_state.authenticated = False
-            st.session_state.user_id = None
-            st.session_state.user_email = None
-            st.rerun()
 
 # ==================== 管理员面板 ====================
 def render_admin_panel():
@@ -491,10 +495,18 @@ def main():
     </style>
     """, unsafe_allow_html=True)
     
-    # 显示对应页面
+    # 始终渲染侧边栏
+    render_sidebar()
+    
+    # 渲染右上角按钮
+    render_top_buttons()
+    
+    # 根据状态渲染主内容
     if not st.session_state.authenticated:
         if st.session_state.get("show_register", False):
             render_register_form()
+        elif st.session_state.get("reset_password", False):
+            render_reset_password_form()
         else:
             render_login_form()
     else:
