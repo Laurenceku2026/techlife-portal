@@ -1,6 +1,6 @@
 import streamlit as st
 from supabase import create_client, Client
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # ==================== 页面配置 ====================
 st.set_page_config(
@@ -12,7 +12,7 @@ st.set_page_config(
 # ==================== 管理员配置 ====================
 ADMIN_USERNAME = "Laurence_ku"
 ADMIN_PASSWORD = "Ku_product$2026"
-ADMIN_EMAIL = "techlife2027@gmail.com"  # 管理员邮箱
+ADMIN_EMAIL = "techlife2027@gmail.com"
 
 # 三个 APP 的 URL
 APP_URLS = {
@@ -91,6 +91,10 @@ TEXTS = {
         "login_failed": "登录失败",
         "register_success": "注册成功！请登录",
         "email_exists": "该邮箱已注册，请直接登录",
+        "coming_soon": "子应用即将上线",
+        "trial_consumed": "✅ 免费次数已消耗！剩余 {} 次",
+        "app_address": "📱 子应用地址: {}",
+        "subapp_note": "⚠️ 子应用需要单独部署并修改代码接收参数",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -160,6 +164,10 @@ Let AI become your Chief Quality Engineer.
         "login_failed": "Login failed",
         "register_success": "Registration successful! Please login.",
         "email_exists": "Email already registered. Please login.",
+        "coming_soon": "Sub-app coming soon",
+        "trial_consumed": "✅ Trial consumed! {} remaining",
+        "app_address": "📱 App URL: {}",
+        "subapp_note": "⚠️ Sub-app needs separate deployment",
     }
 }
 
@@ -192,10 +200,6 @@ if "show_admin_login" not in st.session_state:
 
 def t():
     return TEXTS[st.session_state.lang]
-
-def is_admin_user(email):
-    """判断是否是管理员"""
-    return email == ADMIN_EMAIL
 
 def get_user_profile(user_id: str):
     if not supabase or not user_id or user_id == "admin":
@@ -468,9 +472,9 @@ def render_main_app():
                     if st.button(t()["launch"], key=app_info["key"], use_container_width=True):
                         allowed, remaining, msg = check_and_consume_trial(st.session_state.user_id, app_info["key"])
                         if allowed:
-                            # 传递用户信息到子应用
-                            redirect_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}"
-                            st.markdown(f'<meta http-equiv="refresh" content="0; url={redirect_url}">', unsafe_allow_html=True)
+                            st.success(t()["trial_consumed"].format(remaining))
+                            st.info(t()["app_address"].format(app_info["url"]))
+                            st.warning(t()["subapp_note"])
                         else:
                             st.error(msg)
 
