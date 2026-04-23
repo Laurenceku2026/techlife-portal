@@ -176,12 +176,28 @@ Let AI become your Chief Quality Engineer.
 # ==================== Supabase 初始化 ====================
 @st.cache_resource
 def init_supabase():
+    """使用 anon key 初始化（用于用户认证）"""
     try:
         return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    except Exception as e:
+    except Exception:
         return None
 
-supabase = init_supabase()
+@st.cache_resource
+def init_supabase_admin():
+    """使用 service role key 初始化（用于数据库操作）"""
+    try:
+        service_key = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", "")
+        if service_key:
+            return create_client(st.secrets["SUPABASE_URL"], service_key)
+    except Exception:
+        pass
+    return None
+
+supabase = init_supabase()  # 用于认证
+supabase_admin = init_supabase_admin()  # 用于数据操作
+
+# 默认使用 admin client
+db = supabase_admin if supabase_admin else supabase
 
 # ==================== Session State ====================
 if "lang" not in st.session_state:
@@ -204,26 +220,26 @@ if "show_admin_login" not in st.session_state:
 def t():
     return TEXTS[st.session_state.lang]
 
-# ==================== 辅助函数 ====================
+# ==================== 辅助函数（使用 db = supabase_admin）====================
 def get_user_profile(user_id: str):
-    if not supabase or not user_id or user_id == "admin":
+    if not db or not user_id or user_id == "admin":
         return {"subscription_tier": "free", "free_trials_remaining": 30}
     try:
-        response = supabase.table("profiles")\
+        response = db.table("profiles")\
             .select("subscription_tier, free_trials_remaining")\
             .eq("id", user_id)\
             .execute()
         if response.data:
             return response.data[0]
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"获取用户资料失败: {e}")
     return {"subscription_tier": "free", "free_trials_remaining": 30}
 
 def get_user_total_usage(user_id: str):
-    if not supabase or not user_id or user_id == "admin":
+    if not db or not user_id or user_id == "admin":
         return 0
     try:
-        response = supabase.table("usage_logs")\
+        response = db.table("usage_logs")\
             .select("analysis_count")\
             .eq("user_id", user_id)\
             .execute()
@@ -398,6 +414,7 @@ def render_reset_password_form():
 def render_main_app():
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
+        # 获取用户资料
         profile = get_user_profile(st.session_state.user_id)
         tier = profile.get("subscription_tier", "free")
         remaining = profile.get("free_trials_remaining", 30)
@@ -423,12 +440,12 @@ def render_main_app():
         col_test1, col_test2, col_test3 = st.columns(3)
         with col_test1:
             if st.button(t()["test_consume"], key="test_consume_btn", use_container_width=True):
-                if supabase and st.session_state.user_id != "admin":
+                if db and st.session_state.user_id != "admin":
                     try:
-                        resp = supabase.table("profiles").select("free_trials_remaining").eq("id", st.session_state.user_id).execute()
+                        resp = db.table("profiles").select("free_trials_remaining").eq("id", st.session_state.user_id).execute()
                         if resp.data:
                             current = resp.data[0].get("free_trials_remaining", 30)
-                            supabase.table("profiles").update({"free_trials_remaining": current - 1}).eq("id", st.session_state.user_id).execute()
+                            db.table("profiles").update({"free_trials_remaining": current - 1}).eq("id", st.session_state.user_id).execute()
                             st.success(f"✅ 已从 {current} 减到 {current - 1}")
                             st.rerun()
                         else:
@@ -439,9 +456,9 @@ def render_main_app():
                     st.warning("无法测试")
         with col_test2:
             if st.button(t()["test_view"], key="test_view_btn", use_container_width=True):
-                if supabase and st.session_state.user_id != "admin":
+                if db and st.session_state.user_id != "admin":
                     try:
-                        resp = supabase.table("profiles").select("free_trials_remaining").eq("id", st.session_state.user_id).execute()
+                        resp = db.table("profiles").select("free_trials_remaining").eq("id", st.session_state.user_id).execute()
                         if resp.data:
                             st.info(f"当前剩余次数: {resp.data[0].get('free_trials_remaining')}")
                         else:
@@ -509,8 +526,6 @@ def render_main_app():
 
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
-    
-    db = supabase
     
     if not db:
         st.warning("数据库连接失败")
@@ -585,6 +600,7 @@ def render_admin_panel():
         
     except Exception as e:
         st.warning(f"无法获取数据: {e}")
+        st.info("请检查 Supabase Service Role Key 配置")
     
     st.markdown("---")
     if st.button(t()["exit_admin"], use_container_width=True):
