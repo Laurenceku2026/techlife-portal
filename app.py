@@ -174,31 +174,19 @@ Let AI become your Chief Quality Engineer.
 }
 
 # ==================== Supabase 初始化 ====================
+# ==================== Supabase 初始化 ====================
 @st.cache_resource
 def init_supabase():
-    """使用 anon key 初始化（用于用户认证）"""
+    """使用 anon key 初始化"""
     try:
         return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     except Exception:
         return None
 
-@st.cache_resource
-def init_supabase_admin():
-    """使用 service role key 初始化（用于数据库操作）"""
-    try:
-        service_key = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", "")
-        if service_key:
-            return create_client(st.secrets["SUPABASE_URL"], service_key)
-    except Exception:
-        pass
-    return None
+supabase = init_supabase()
+db = supabase  # 直接使用同一个客户端
 
-supabase = init_supabase()  # 用于认证
-supabase_admin = init_supabase_admin()  # 用于数据操作
-
-# 默认使用 admin client
-db = supabase_admin if supabase_admin else supabase
-
+# ==================== Session State ====================
 # ==================== Session State ====================
 if "lang" not in st.session_state:
     st.session_state.lang = "zh"
