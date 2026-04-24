@@ -495,6 +495,27 @@ def render_admin_panel():
         else:
             users = []
         
+        # 获取 auth.users 中的注册时间和最后登录信息
+        # 注意：需要额外查询 auth.users 表
+        auth_users = {}
+        try:
+            # 使用 service_role key 查询 auth.users
+            auth_url = f"{SUPABASE_URL}/auth/v1/admin/users"
+            auth_headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+            auth_response = requests.get(auth_url, headers=auth_headers)
+            if auth_response.status_code == 200:
+                for u in auth_response.json():
+                    auth_users[u.get("id")] = {
+                        "created_at": u.get("created_at", ""),
+                        "last_sign_in_at": u.get("last_sign_in_at", ""),
+                        "email_confirmed_at": u.get("email_confirmed_at", "")
+                    }
+        except Exception:
+            pass
+        
         pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
         
         col1, col2, col3 = st.columns(3)
@@ -511,12 +532,24 @@ def render_admin_panel():
         if users:
             user_data = []
             for user in users:
+                auth_info = auth_users.get(user.get("id"), {})
+                created_at = auth_info.get("created_at", "")
+                if created_at:
+                    created_at = created_at[:10]  # 只取日期部分
+                else:
+                    created_at = "-"
+                
                 user_data.append({
                     t()["email_col"]: user.get("email"),
                     t()["subscription_col"]: "💎 Pro" if user.get("subscription_tier") == "pro" else "🔒 Free",
-                    t()["trials_left"]: user.get("free_trials_remaining", 30),
+                    "剩余次数": user.get("free_trials_remaining", 30),
+                    "注册时间": created_at,
+                    "到期时间": user.get("subscription_expires_at", "-")[:10] if user.get("subscription_expires_at") else "-",
                 })
-            st.dataframe(user_data, use_container_width=True)
+            
+            # 使用容器实现滚动
+            with st.container(height=400):
+                st.dataframe(user_data, use_container_width=True)
         else:
             st.info("暂无用户数据")
         
@@ -539,11 +572,25 @@ def render_admin_panel():
                     new_trials = st.number_input(t()["set_trials"], min_value=0, max_value=100, 
                                                   value=selected_user.get("free_trials_remaining", 30))
                 
+                # 设置到期时间（专业版专用）
+                expires_at = None
+                if new_tier == "pro":
+                    col_date = st.columns([1])
+                    with col_date[0]:
+                        months = st.number_input("月数", min_value=1, max_value=12, value=1)
+                        expires_at = (datetime.now() + timedelta(days=30 * months)).isoformat()
+                
                 if st.button(t()["update_btn"], use_container_width=True):
-                    patch_resp = supabase_patch("profiles", selected_user.get("id"), {
+                    update_data = {
                         "subscription_tier": new_tier,
                         "free_trials_remaining": new_trials
-                    })
+                    }
+                    if expires_at:
+                        update_data["subscription_expires_at"] = expires_at
+                    else:
+                        update_data["subscription_expires_at"] = None
+                    
+                    patch_resp = supabase_patch("profiles", selected_user.get("id"), update_data)
                     if patch_resp.status_code in [200, 204]:
                         st.success(f"已更新 {selected_email}")
                         st.rerun()
@@ -571,7 +618,6 @@ def render_admin_panel():
         st.session_state.admin_mode = False
         st.session_state.authenticated = False
         st.rerun()
-
 def main():
     render_sidebar()
     render_top_buttons()
