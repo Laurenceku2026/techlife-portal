@@ -27,11 +27,11 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-def supabase_get(table: str, user_id: str = None):
+def supabase_get(table: str, user_id: str = None, id_field: str = "id"):
     """GET 请求"""
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     if user_id:
-        url += f"?id=eq.{user_id}"
+        url += f"?{id_field}=eq.{user_id}"  # 使用指定的字段名
     response = requests.get(url, headers=HEADERS)
     return response
 
@@ -220,14 +220,14 @@ def get_user_total_usage(user_id: str):
     if not user_id or user_id == "admin":
         return 0
     try:
-        response = supabase_get("usage_logs", user_id)
+        # usage_logs 表使用 user_id 字段
+        response = supabase_get("usage_logs", user_id, id_field="user_id")
         if response.status_code == 200:
             data = response.json()
             return sum([item.get("analysis_count", 1) for item in data])
     except Exception:
         pass
     return 0
-
 # ==================== UI 组件 ====================
 def render_sidebar():
     with st.sidebar:
