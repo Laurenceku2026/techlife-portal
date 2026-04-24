@@ -31,7 +31,7 @@ def supabase_get(table: str, user_id: str = None, id_field: str = "id"):
     """GET 请求"""
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     if user_id:
-        url += f"?{id_field}=eq.{user_id}"  # 使用指定的字段名
+        url += f"?{id_field}=eq.{user_id}"
     response = requests.get(url, headers=HEADERS)
     return response
 
@@ -228,6 +228,7 @@ def get_user_total_usage(user_id: str):
     except Exception:
         pass
     return 0
+
 # ==================== UI 组件 ====================
 def render_sidebar():
     with st.sidebar:
@@ -410,14 +411,7 @@ def render_main_app():
         remaining = profile.get("free_trials_remaining", 30)
         total_usage = get_user_total_usage(st.session_state.user_id)
         
-        # 欢迎语和刷新按钮
-        col_welcome, col_refresh_btn = st.columns([4, 1])
-        with col_welcome:
-            st.markdown(f"<h3 style='text-align: left;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
-        with col_refresh_btn:
-            if st.button("🔄", key="refresh_btn", help="刷新数据"):
-                st.rerun()
-        
+        st.markdown(f"<h3 style='text-align: center;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
         st.markdown("---")
         
         # 三个指标卡片
@@ -430,7 +424,13 @@ def render_main_app():
             else:
                 st.metric(t()["free_trial"], "∞")
         with col_sub3:
-            st.metric(t()["total_usage"], total_usage)
+            # 总使用次数 + 刷新按钮放在同一卡片内
+            col_usage, col_refresh = st.columns([3, 1])
+            with col_usage:
+                st.metric(t()["total_usage"], total_usage)
+            with col_refresh:
+                if st.button("🔄", key="refresh_btn", help="刷新数据"):
+                    st.rerun()
         
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
