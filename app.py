@@ -17,9 +17,9 @@ APP_URLS = {
     "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app"
 }
 
-# ==================== Supabase 配置（使用 HTTP 请求）====================
+# ==================== Supabase 配置 ====================
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]  # 正确
+SUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -206,20 +206,31 @@ if "show_admin_login" not in st.session_state:
 def t():
     return TEXTS[st.session_state.lang]
 
-# ==================== 辅助函数 ====================
+# ==================== 辅助函数（带调试）====================
 def get_user_profile(user_id: str):
+    """获取用户资料（带调试信息）"""
+    st.write(f"🔍 调试: 查询用户ID = {user_id}")
+    
     if not user_id or user_id == "admin":
+        st.write("🔍 调试: 用户是 admin，返回默认值")
         return {"subscription_tier": "free", "free_trials_remaining": 30}
+    
     try:
         response = supabase_get("profiles", user_id)
+        st.write(f"🔍 调试: API 响应状态码 = {response.status_code}")
+        
         if response.status_code == 200 and response.json():
             data = response.json()[0]
+            st.write(f"🔍 调试: 找到用户数据 - 订阅: {data.get('subscription_tier')}, 剩余次数: {data.get('free_trials_remaining')}")
             return {
                 "subscription_tier": data.get("subscription_tier", "free"),
                 "free_trials_remaining": data.get("free_trials_remaining", 30)
             }
+        else:
+            st.write(f"🔍 调试: 响应内容 = {response.text}")
     except Exception as e:
         st.error(f"获取用户资料错误: {e}")
+    
     return {"subscription_tier": "free", "free_trials_remaining": 30}
 
 def get_user_total_usage(user_id: str):
@@ -329,12 +340,20 @@ def render_login_form():
                         }
                         auth_data = {"email": email, "password": password}
                         response = requests.post(auth_url, headers=auth_headers, json=auth_data)
+                        
                         if response.status_code == 200:
                             data = response.json()
+                            user_id = data.get("user", {}).get("id")
+                            
+                            # 🆕 调试信息
+                            st.success(f"✅ 登录成功！")
+                            st.code(f"用户ID: {user_id}")
+                            st.code(f"邮箱: {email}")
+                            
                             st.session_state.authenticated = True
-                            st.session_state.user_id = data.get("user", {}).get("id")
+                            st.session_state.user_id = user_id
                             st.session_state.user_email = email
-                            st.rerun()
+                            st.stop()  # 临时停止，查看调试信息
                         else:
                             st.error(f"登录失败: {response.json().get('msg', '未知错误')}")
                     except Exception as e:
@@ -371,7 +390,6 @@ def render_register_form():
                     st.warning("密码长度至少6位")
                 else:
                     try:
-                        # 使用 Supabase Auth REST API
                         auth_url = f"{SUPABASE_URL}/auth/v1/signup"
                         auth_headers = {
                             "apikey": SUPABASE_KEY,
@@ -591,7 +609,6 @@ def render_admin_panel():
         st.markdown("---")
         st.subheader(t()["batch_ops"])
         if st.button(t()["reset_all_trials"], use_container_width=True):
-            # 获取所有免费用户并重置
             users_resp = supabase_get("profiles")
             if users_resp.status_code == 200:
                 for user in users_resp.json():
