@@ -175,18 +175,33 @@ Let AI become your Chief Quality Engineer.
 
 # ==================== Supabase 初始化 ====================
 # ==================== Supabase 初始化 ====================
+import os
+
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+
 @st.cache_resource
 def init_supabase():
-    """使用 anon key 初始化"""
+    """手动配置 Supabase 客户端"""
     try:
-        return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    except Exception:
+        # 使用 postgrest 直接创建客户端
+        from postgrest import AsyncPostgrestClient
+        import httpx
+        
+        # 创建客户端
+        client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        
+        # 测试连接
+        test = client.table("profiles").select("*", count="exact").execute()
+        print(f"连接成功，用户数: {test.count}")
+        
+        return client
+    except Exception as e:
+        st.error(f"Supabase 连接失败: {e}")
         return None
 
 supabase = init_supabase()
-db = supabase  # 直接使用同一个客户端
-
-# ==================== Session State ====================
+db = supabase
 # ==================== Session State ====================
 if "lang" not in st.session_state:
     st.session_state.lang = "zh"
