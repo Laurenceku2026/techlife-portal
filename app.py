@@ -19,7 +19,7 @@ APP_URLS = {
 
 # ==================== Supabase 配置（使用 HTTP 请求）====================
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SSUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]  # 改为这个
+SUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]  # 正确
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
