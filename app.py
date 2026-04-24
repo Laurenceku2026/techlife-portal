@@ -432,47 +432,6 @@ def render_main_app():
         with col_sub3:
             st.metric(t()["total_usage"], total_usage)
         
-        # 测试区（可删除）
-        st.markdown("---")
-        st.markdown("### 🧪 测试区")
-        col_test1, col_test2, col_test3 = st.columns(3)
-        with col_test1:
-            if st.button(t()["test_consume"], key="test_consume_btn", use_container_width=True):
-                if st.session_state.user_id and st.session_state.user_id != "admin":
-                    try:
-                        resp = supabase_get("profiles", st.session_state.user_id)
-                        if resp.status_code == 200 and resp.json():
-                            current = resp.json()[0].get("free_trials_remaining", 30)
-                            patch_resp = supabase_patch("profiles", st.session_state.user_id, {"free_trials_remaining": current - 1})
-                            if patch_resp.status_code == 200:
-                                st.success(f"✅ 已从 {current} 减到 {current - 1}")
-                                st.rerun()
-                            else:
-                                st.error(f"更新失败: {patch_resp.text}")
-                        else:
-                            st.error("用户数据不存在")
-                    except Exception as e:
-                        st.error(f"错误: {e}")
-                else:
-                    st.warning("无法测试")
-        with col_test2:
-            if st.button(t()["test_view"], key="test_view_btn", use_container_width=True):
-                if st.session_state.user_id and st.session_state.user_id != "admin":
-                    try:
-                        resp = supabase_get("profiles", st.session_state.user_id)
-                        if resp.status_code == 200 and resp.json():
-                            remaining_val = resp.json()[0].get("free_trials_remaining", 30)
-                            st.info(f"当前剩余次数: {remaining_val}")
-                        else:
-                            st.error("用户数据不存在")
-                    except Exception as e:
-                        st.error(f"错误: {e}")
-                else:
-                    st.warning("管理员账号")
-        with col_test3:
-            if st.button(t()["test_refresh"], key="test_refresh_btn", use_container_width=True):
-                st.rerun()
-        
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
         st.caption(t()["open_new_tab"])
@@ -525,7 +484,6 @@ def render_main_app():
                     ">{t()['launch']}</a>
                     '''
                     st.markdown(button_html, unsafe_allow_html=True)
-
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     
