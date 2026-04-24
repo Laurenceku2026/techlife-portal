@@ -1,13 +1,9 @@
 import streamlit as st
-from supabase import create_client, Client
+from supabase import create_client
 from datetime import datetime
 
 # ==================== 页面配置 ====================
-st.set_page_config(
-    page_title="TechLife Suite",
-    page_icon="🔧",
-    layout="wide"
-)
+st.set_page_config(page_title="TechLife Suite", page_icon="🔧", layout="wide")
 
 # ==================== 管理员配置 ====================
 ADMIN_USERNAME = "Laurence_ku"
@@ -39,8 +35,6 @@ TEXTS = {
 """,
         "contact_header": "📧 联系我们",
         "contact_email": "邮箱: Techlife2027@gmail.com",
-        "join_group": "点我加入群聊",
-        
         "main_title": "TechLife Suite 门户",
         "main_subtitle": "一站式工程研发 AI 工具集",
         "email_placeholder": "请输入邮箱",
@@ -48,12 +42,10 @@ TEXTS = {
         "login_btn": "登录",
         "register_btn": "注册新账号",
         "forgot_password": "忘记密码?",
-        
         "register_title": "注册新账号",
         "confirm_password": "确认密码",
         "register_submit": "注册",
         "back_to_login": "返回登录",
-        
         "welcome": "欢迎回来",
         "logout": "登出",
         "free_trial": "剩余免费次数",
@@ -61,17 +53,14 @@ TEXTS = {
         "total_usage": "总使用次数",
         "nav_title": "应用导航",
         "admin_panel": "管理员面板",
-        
         "chinese": "中文",
         "english": "English",
-        
         "admin_login_title": "管理员登录",
         "admin_username": "用户名",
         "admin_password": "密码",
         "admin_login_btn": "登录",
         "admin_back": "返回用户登录",
         "admin_error": "用户名或密码错误",
-        
         "total_users": "总用户数",
         "pro_users": "专业版用户",
         "free_users": "免费版用户",
@@ -113,8 +102,6 @@ Let AI become your Chief Quality Engineer.
 """,
         "contact_header": "📧 Contact Us",
         "contact_email": "Email: Techlife2027@gmail.com",
-        "join_group": "Join Group Chat",
-        
         "main_title": "TechLife Suite Portal",
         "main_subtitle": "One-stop AI Toolkit for R&D Engineering",
         "email_placeholder": "Enter your email",
@@ -122,12 +109,10 @@ Let AI become your Chief Quality Engineer.
         "login_btn": "LOG IN",
         "register_btn": "REGISTER",
         "forgot_password": "Forgot Password?",
-        
         "register_title": "Register New Account",
         "confirm_password": "Confirm Password",
         "register_submit": "Register",
         "back_to_login": "Back to Login",
-        
         "welcome": "Welcome back",
         "logout": "Logout",
         "free_trial": "Remaining Trials",
@@ -135,17 +120,14 @@ Let AI become your Chief Quality Engineer.
         "total_usage": "Total Usage",
         "nav_title": "App Navigation",
         "admin_panel": "Admin Panel",
-        
         "chinese": "中文",
         "english": "English",
-        
         "admin_login_title": "Admin Login",
         "admin_username": "Username",
         "admin_password": "Password",
         "admin_login_btn": "Login",
         "admin_back": "Back to User Login",
         "admin_error": "Invalid credentials",
-        
         "total_users": "Total Users",
         "pro_users": "Pro Users",
         "free_users": "Free Users",
@@ -174,34 +156,18 @@ Let AI become your Chief Quality Engineer.
 }
 
 # ==================== Supabase 初始化 ====================
-# ==================== Supabase 初始化 ====================
-import os
-
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-
 @st.cache_resource
 def init_supabase():
-    """手动配置 Supabase 客户端"""
     try:
-        # 使用 postgrest 直接创建客户端
-        from postgrest import AsyncPostgrestClient
-        import httpx
-        
-        # 创建客户端
-        client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        
-        # 测试连接
-        test = client.table("profiles").select("*", count="exact").execute()
-        print(f"连接成功，用户数: {test.count}")
-        
-        return client
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        return create_client(url, key)
     except Exception as e:
-        st.error(f"Supabase 连接失败: {e}")
         return None
 
 supabase = init_supabase()
 db = supabase
+
 # ==================== Session State ====================
 if "lang" not in st.session_state:
     st.session_state.lang = "zh"
@@ -223,7 +189,7 @@ if "show_admin_login" not in st.session_state:
 def t():
     return TEXTS[st.session_state.lang]
 
-# ==================== 辅助函数（使用 db = supabase_admin）====================
+# ==================== 辅助函数 ====================
 def get_user_profile(user_id: str):
     if not db or not user_id or user_id == "admin":
         return {"subscription_tier": "free", "free_trials_remaining": 30}
@@ -234,8 +200,8 @@ def get_user_profile(user_id: str):
             .execute()
         if response.data:
             return response.data[0]
-    except Exception as e:
-        print(f"获取用户资料失败: {e}")
+    except Exception:
+        pass
     return {"subscription_tier": "free", "free_trials_remaining": 30}
 
 def get_user_total_usage(user_id: str):
@@ -259,7 +225,6 @@ def render_sidebar():
         st.divider()
         st.subheader(t()["contact_header"])
         st.markdown(t()["contact_email"])
-        st.markdown(f"[{t()['join_group']}](https://t.me/+YOUR_GROUP_LINK)")
         
         if st.session_state.authenticated:
             st.divider()
@@ -417,7 +382,6 @@ def render_reset_password_form():
 def render_main_app():
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
-        # 获取用户资料
         profile = get_user_profile(st.session_state.user_id)
         tier = profile.get("subscription_tier", "free")
         remaining = profile.get("free_trials_remaining", 30)
@@ -437,7 +401,7 @@ def render_main_app():
         with col_sub3:
             st.metric(t()["total_usage"], total_usage)
         
-        # ==================== 测试区 ====================
+        # 测试区
         st.markdown("---")
         st.markdown("### 🧪 测试区")
         col_test1, col_test2, col_test3 = st.columns(3)
@@ -603,7 +567,6 @@ def render_admin_panel():
         
     except Exception as e:
         st.warning(f"无法获取数据: {e}")
-        st.info("请检查 Supabase Service Role Key 配置")
     
     st.markdown("---")
     if st.button(t()["exit_admin"], use_container_width=True):
