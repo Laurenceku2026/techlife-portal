@@ -426,6 +426,21 @@ def render_reset_password_form():
             st.rerun()
 
 def render_main_app():
+    # 🧪 最简单的直接测试
+    if st.button("🧪 直接API测试"):
+        import requests
+        url = "https://hmvwgqcbwbdsfppycxkt.supabase.co/rest/v1/profiles"
+        headers = {
+            "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtdndncWNid2Jkc2ZwcHljeGt0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk5NTE3NCwiZXhwIjoyMDkyNTcxMTc0fQ.FoaM2tBHNMCQrR-IToU9GUSG6QgzClJBsWNEYDI6QoU",
+            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtdndncWNid2Jkc2ZwcHljeGt0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk5NTE3NCwiZXhwIjoyMDkyNTcxMTc0fQ.FoaM2tBHNMCQrR-IToU9GUSG6QgzClJBsWNEYDI6QoU"
+        }
+        response = requests.get(url, headers=headers)
+        st.code(f"状态码: {response.status_code}")
+        st.code(f"响应: {response.text}")
+        return
+    
+    # 原有的代码继续...
+    
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         profile = get_user_profile(st.session_state.user_id)
