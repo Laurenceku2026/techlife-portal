@@ -665,19 +665,31 @@ def render_admin_panel():
                         except Exception as e:
                             st.error(f"发送失败: {e}")
                 
-                # 发送确认邮件按钮
+                # 发送确认邮件按钮（修复版）
                 with col_btn3:
                     if st.button("📧 发送确认邮件", use_container_width=True, key="admin_confirm_email"):
                         try:
-                            # 重新发送邮箱确认邮件
+                            # 方法1：使用重新发送确认邮件 API
                             confirm_url = f"{SUPABASE_URL}/auth/v1/admin/users/{selected_user.get('id')}/resend_confirmation"
                             confirm_headers = {
                                 "apikey": SUPABASE_KEY,
-                                "Authorization": f"Bearer {SUPABASE_KEY}"
+                                "Authorization": f"Bearer {SUPABASE_KEY}",
+                                "Content-Type": "application/json"
                             }
                             confirm_response = requests.post(confirm_url, headers=confirm_headers)
+                            
                             if confirm_response.status_code == 200:
                                 st.success(f"✅ 确认邮件已发送至 {selected_email}")
+                            elif confirm_response.status_code == 404:
+                                # 方法2：如果 API 不存在，使用重置密码邮件（用户点击后也可确认邮箱）
+                                alt_url = f"{SUPABASE_URL}/auth/v1/recover"
+                                alt_data = {"email": selected_email}
+                                alt_response = requests.post(alt_url, headers=confirm_headers, json=alt_data)
+                                if alt_response.status_code == 200:
+                                    st.success(f"✅ 邮件已发送至 {selected_email}")
+                                    st.info("用户点击邮件中的链接后登录即可确认邮箱")
+                                else:
+                                    st.error(f"发送失败: {alt_response.text}")
                             else:
                                 st.error(f"发送失败: {confirm_response.text}")
                         except Exception as e:
@@ -700,20 +712,25 @@ def render_admin_panel():
                     st.error("重置失败")
         
         with col_batch2:
-            if st.button("📧 发送提醒邮件给所有未确认用户", use_container_width=True, key="admin_email_all"):
+            if st.button("📧 发送提醒给未确认用户", use_container_width=True, key="admin_email_all"):
+                success_count = 0
                 for user in users:
                     auth_info = auth_users.get(user.get("id"), {})
                     if not auth_info.get("email_confirmed_at"):
                         try:
-                            confirm_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user.get('id')}/resend_confirmation"
-                            confirm_headers = {
+                            reset_url = f"{SUPABASE_URL}/auth/v1/recover"
+                            reset_headers = {
                                 "apikey": SUPABASE_KEY,
-                                "Authorization": f"Bearer {SUPBASE_KEY}"
+                                "Authorization": f"Bearer {SUPABASE_KEY}",
+                                "Content-Type": "application/json"
                             }
-                            requests.post(confirm_url, headers=confirm_headers)
+                            reset_data = {"email": user.get("email")}
+                            reset_response = requests.post(reset_url, headers=reset_headers, json=reset_data)
+                            if reset_response.status_code == 200:
+                                success_count += 1
                         except Exception:
                             pass
-                st.success("已向所有未确认用户发送确认邮件")
+                st.success(f"已向 {success_count} 位未确认用户发送邮件")
                 st.rerun()
         
     except Exception as e:
