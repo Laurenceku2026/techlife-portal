@@ -1,7 +1,6 @@
 import streamlit as st
-from supabase import create_client
-from datetime import datetime
 import requests
+from datetime import datetime
 
 # ==================== 页面配置 ====================
 st.set_page_config(page_title="TechLife Suite", page_icon="🔧", layout="wide")
@@ -17,6 +16,36 @@ APP_URLS = {
     "dqa": "https://ai-design-dfmea.streamlit.app",
     "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app"
 }
+
+# ==================== Supabase 配置（使用 HTTP 请求）====================
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json"
+}
+
+def supabase_get(table: str, user_id: str = None):
+    """GET 请求"""
+    url = f"{SUPABASE_URL}/rest/v1/{table}"
+    if user_id:
+        url += f"?id=eq.{user_id}"
+    response = requests.get(url, headers=HEADERS)
+    return response
+
+def supabase_patch(table: str, user_id: str, data: dict):
+    """PATCH 请求（更新）"""
+    url = f"{SUPABASE_URL}/rest/v1/{table}?id=eq.{user_id}"
+    response = requests.patch(url, headers=HEADERS, json=data)
+    return response
+
+def supabase_post(table: str, data: dict):
+    """POST 请求（插入）"""
+    url = f"{SUPABASE_URL}/rest/v1/{table}"
+    response = requests.post(url, headers=HEADERS, json=data)
+    return response
 
 # ==================== 多语言配置 ====================
 TEXTS = {
@@ -156,25 +185,6 @@ Let AI become your Chief Quality Engineer.
     }
 }
 
-# ==================== Supabase 配置 ====================
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_SERVICE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]  # 使用 service_role key
-
-# 创建带正确 headers 的 supabase 客户端
-@st.cache_resource
-def init_supabase():
-    """使用 service_role key 初始化，绕过 RLS"""
-    try:
-        # 直接使用 service_role key
-        client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        return client
-    except Exception as e:
-        st.error(f"Supabase 连接失败: {e}")
-        return None
-
-supabase = init_supabase()
-db = supabase
-
 # ==================== Session State ====================
 if "lang" not in st.session_state:
     st.session_state.lang = "zh"
@@ -198,30 +208,31 @@ def t():
 
 # ==================== 辅助函数 ====================
 def get_user_profile(user_id: str):
-    if not db or not user_id or user_id == "admin":
+    if not user_id or user_id == "admin":
         return {"subscription_tier": "free", "free_trials_remaining": 30}
     try:
-        response = db.table("profiles")\
-            .select("subscription_tier, free_trials_remaining")\
-            .eq("id", user_id)\
-            .execute()
-        if response.data:
-            return response.data[0]
+        response = supabase_get("profiles", user_id)
+        if response.status_code == 200 and response.json():
+            data = response.json()[0]
+            return {
+                "subscription_tier": data.get("subscription_tier", "free"),
+                "free_trials_remaining": data.get("free_trials_remaining", 30)
+            }
     except Exception as e:
         st.error(f"获取用户资料错误: {e}")
     return {"subscription_tier": "free", "free_trials_remaining": 30}
 
 def get_user_total_usage(user_id: str):
-    if not db or not user_id or user_id == "admin":
+    if not user_id or user_id == "admin":
         return 0
     try:
-        response = db.table("usage_logs")\
-            .select("analysis_count")\
-            .eq("user_id", user_id)\
-            .execute()
-        return sum([log.get("analysis_count", 1) for log in response.data])
+        response = supabase_get("usage_logs", user_id)
+        if response.status_code == 200:
+            data = response.json()
+            return sum([item.get("analysis_count", 1) for item in data])
     except Exception:
-        return 0
+        pass
+    return 0
 
 # ==================== UI 组件 ====================
 def render_sidebar():
@@ -249,11 +260,6 @@ def render_sidebar():
                 st.caption(f"🎫 {t()['free_trial']}: ∞")
             
             if st.button(t()["logout"], use_container_width=True):
-                if supabase:
-                    try:
-                        supabase.auth.sign_out()
-                    except:
-                        pass
                 st.session_state.authenticated = False
                 st.session_state.user_id = None
                 st.session_state.user_email = None
@@ -313,18 +319,26 @@ def render_login_form():
             submitted = st.form_submit_button(t()["login_btn"], type="primary", use_container_width=True)
             
             if submitted:
-                if email and password and supabase:
+                if email and password:
                     try:
-                        response = supabase.auth.sign_in_with_password({
-                            "email": email,
-                            "password": password
-                        })
-                        st.session_state.authenticated = True
-                        st.session_state.user_id = response.user.id
-                        st.session_state.user_email = response.user.email
-                        st.rerun()
+                        # 使用 Supabase Auth REST API
+                        auth_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
+                        auth_headers = {
+                            "apikey": SUPABASE_KEY,
+                            "Content-Type": "application/json"
+                        }
+                        auth_data = {"email": email, "password": password}
+                        response = requests.post(auth_url, headers=auth_headers, json=auth_data)
+                        if response.status_code == 200:
+                            data = response.json()
+                            st.session_state.authenticated = True
+                            st.session_state.user_id = data.get("user", {}).get("id")
+                            st.session_state.user_email = email
+                            st.rerun()
+                        else:
+                            st.error(f"登录失败: {response.json().get('msg', '未知错误')}")
                     except Exception as e:
-                        st.error(f"{t()['login_failed']}: {str(e)}")
+                        st.error(f"登录失败: {e}")
                 else:
                     st.warning("请输入邮箱和密码")
         
@@ -355,21 +369,28 @@ def render_register_form():
                     st.warning("两次输入的密码不一致")
                 elif len(password) < 6:
                     st.warning("密码长度至少6位")
-                elif supabase:
+                else:
                     try:
-                        response = supabase.auth.sign_up({
-                            "email": email,
-                            "password": password
-                        })
-                        st.success(t()["register_success"])
-                        st.session_state.show_register = False
-                        st.rerun()
-                    except Exception as e:
-                        error_msg = str(e)
-                        if "User already registered" in error_msg:
-                            st.error(t()["email_exists"])
+                        # 使用 Supabase Auth REST API
+                        auth_url = f"{SUPABASE_URL}/auth/v1/signup"
+                        auth_headers = {
+                            "apikey": SUPABASE_KEY,
+                            "Content-Type": "application/json"
+                        }
+                        auth_data = {"email": email, "password": password}
+                        response = requests.post(auth_url, headers=auth_headers, json=auth_data)
+                        if response.status_code == 200:
+                            st.success(t()["register_success"])
+                            st.session_state.show_register = False
+                            st.rerun()
                         else:
-                            st.error(f"注册失败: {error_msg}")
+                            error_msg = response.json().get("msg", "注册失败")
+                            if "User already registered" in error_msg:
+                                st.error(t()["email_exists"])
+                            else:
+                                st.error(f"注册失败: {error_msg}")
+                    except Exception as e:
+                        st.error(f"注册失败: {e}")
         
         if st.button(t()["back_to_login"], use_container_width=True):
             st.session_state.show_register = False
@@ -414,14 +435,17 @@ def render_main_app():
         col_test1, col_test2, col_test3 = st.columns(3)
         with col_test1:
             if st.button(t()["test_consume"], key="test_consume_btn", use_container_width=True):
-                if db and st.session_state.user_id != "admin":
+                if st.session_state.user_id and st.session_state.user_id != "admin":
                     try:
-                        resp = db.table("profiles").select("free_trials_remaining").eq("id", st.session_state.user_id).execute()
-                        if resp.data:
-                            current = resp.data[0].get("free_trials_remaining", 30)
-                            db.table("profiles").update({"free_trials_remaining": current - 1}).eq("id", st.session_state.user_id).execute()
-                            st.success(f"✅ 已从 {current} 减到 {current - 1}")
-                            st.rerun()
+                        resp = supabase_get("profiles", st.session_state.user_id)
+                        if resp.status_code == 200 and resp.json():
+                            current = resp.json()[0].get("free_trials_remaining", 30)
+                            patch_resp = supabase_patch("profiles", st.session_state.user_id, {"free_trials_remaining": current - 1})
+                            if patch_resp.status_code == 200:
+                                st.success(f"✅ 已从 {current} 减到 {current - 1}")
+                                st.rerun()
+                            else:
+                                st.error(f"更新失败: {patch_resp.text}")
                         else:
                             st.error("用户数据不存在")
                     except Exception as e:
@@ -430,11 +454,12 @@ def render_main_app():
                     st.warning("无法测试")
         with col_test2:
             if st.button(t()["test_view"], key="test_view_btn", use_container_width=True):
-                if db and st.session_state.user_id != "admin":
+                if st.session_state.user_id and st.session_state.user_id != "admin":
                     try:
-                        resp = db.table("profiles").select("free_trials_remaining").eq("id", st.session_state.user_id).execute()
-                        if resp.data:
-                            st.info(f"当前剩余次数: {resp.data[0].get('free_trials_remaining')}")
+                        resp = supabase_get("profiles", st.session_state.user_id)
+                        if resp.status_code == 200 and resp.json():
+                            remaining_val = resp.json()[0].get("free_trials_remaining", 30)
+                            st.info(f"当前剩余次数: {remaining_val}")
                         else:
                             st.error("用户数据不存在")
                     except Exception as e:
@@ -501,17 +526,12 @@ def render_main_app():
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     
-    if not db:
-        st.warning("数据库连接失败")
-        if st.button(t()["exit_admin"], use_container_width=True):
-            st.session_state.admin_mode = False
-            st.session_state.authenticated = False
-            st.rerun()
-        return
-    
     try:
-        response = db.table("profiles").select("*").execute()
-        users = response.data if response.data else []
+        response = supabase_get("profiles")
+        if response.status_code == 200:
+            users = response.json()
+        else:
+            users = []
         
         pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
         
@@ -558,19 +578,29 @@ def render_admin_panel():
                                                   value=selected_user.get("free_trials_remaining", 30))
                 
                 if st.button(t()["update_btn"], use_container_width=True):
-                    db.table("profiles").update({
+                    patch_resp = supabase_patch("profiles", selected_user.get("id"), {
                         "subscription_tier": new_tier,
                         "free_trials_remaining": new_trials
-                    }).eq("id", selected_user.get("id")).execute()
-                    st.success(f"已更新 {selected_email}")
-                    st.rerun()
+                    })
+                    if patch_resp.status_code == 200:
+                        st.success(f"已更新 {selected_email}")
+                        st.rerun()
+                    else:
+                        st.error(f"更新失败: {patch_resp.text}")
         
         st.markdown("---")
         st.subheader(t()["batch_ops"])
         if st.button(t()["reset_all_trials"], use_container_width=True):
-            db.table("profiles").update({"free_trials_remaining": 30}).eq("subscription_tier", "free").execute()
-            st.success("所有免费用户次数已重置为 30 次")
-            st.rerun()
+            # 获取所有免费用户并重置
+            users_resp = supabase_get("profiles")
+            if users_resp.status_code == 200:
+                for user in users_resp.json():
+                    if user.get("subscription_tier") == "free":
+                        supabase_patch("profiles", user.get("id"), {"free_trials_remaining": 30})
+                st.success("所有免费用户次数已重置为 30 次")
+                st.rerun()
+            else:
+                st.error("重置失败")
         
     except Exception as e:
         st.warning(f"无法获取数据: {e}")
