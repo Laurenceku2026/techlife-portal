@@ -42,7 +42,7 @@ def supabase_patch(table: str, user_id: str, data: dict):
     return response
 
 def supabase_post(table: str, data: dict):
-    """POST 请求（插入）"""
+    """POST 请求"""
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     response = requests.post(url, headers=HEADERS, json=data)
     return response
@@ -112,9 +112,6 @@ TEXTS = {
         "register_success": "注册成功！请登录",
         "email_exists": "该邮箱已注册，请直接登录",
         "open_new_tab": "🔗 点击按钮将在新标签页中打开应用",
-        "test_consume": "手动消耗1次",
-        "test_view": "查看当前次数",
-        "test_refresh": "刷新页面",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -179,9 +176,6 @@ Let AI become your Chief Quality Engineer.
         "register_success": "Registration successful! Please login.",
         "email_exists": "Email already registered. Please login.",
         "open_new_tab": "🔗 Click button to open app in new tab",
-        "test_consume": "Consume 1",
-        "test_view": "View Current",
-        "test_refresh": "Refresh",
     }
 }
 
@@ -208,7 +202,6 @@ def t():
 
 # ==================== 辅助函数 ====================
 def get_user_profile(user_id: str):
-    """获取用户资料"""
     if not user_id or user_id == "admin":
         return {"subscription_tier": "free", "free_trials_remaining": 30}
     try:
@@ -224,7 +217,6 @@ def get_user_profile(user_id: str):
     return {"subscription_tier": "free", "free_trials_remaining": 30}
 
 def get_user_total_usage(user_id: str):
-    """获取用户总使用次数"""
     if not user_id or user_id == "admin":
         return 0
     try:
@@ -418,9 +410,17 @@ def render_main_app():
         remaining = profile.get("free_trials_remaining", 30)
         total_usage = get_user_total_usage(st.session_state.user_id)
         
-        st.markdown(f"<h3 style='text-align: center;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
+        # 欢迎语和刷新按钮
+        col_welcome, col_refresh_btn = st.columns([4, 1])
+        with col_welcome:
+            st.markdown(f"<h3 style='text-align: left;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
+        with col_refresh_btn:
+            if st.button("🔄", key="refresh_btn", help="刷新数据"):
+                st.rerun()
+        
         st.markdown("---")
         
+        # 三个指标卡片
         col_sub1, col_sub2, col_sub3 = st.columns(3)
         with col_sub1:
             st.metric(t()["subscription"], "💎 Pro" if tier == "pro" else "🔒 Free")
@@ -484,6 +484,7 @@ def render_main_app():
                     ">{t()['launch']}</a>
                     '''
                     st.markdown(button_html, unsafe_allow_html=True)
+
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     
@@ -543,7 +544,7 @@ def render_admin_panel():
                         "subscription_tier": new_tier,
                         "free_trials_remaining": new_trials
                     })
-                    if patch_resp.status_code == 200:
+                    if patch_resp.status_code in [200, 204]:
                         st.success(f"已更新 {selected_email}")
                         st.rerun()
                     else:
