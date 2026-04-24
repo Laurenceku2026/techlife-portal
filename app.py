@@ -206,34 +206,25 @@ if "show_admin_login" not in st.session_state:
 def t():
     return TEXTS[st.session_state.lang]
 
-# ==================== 辅助函数（带调试）====================
+# ==================== 辅助函数 ====================
 def get_user_profile(user_id: str):
-    """获取用户资料（带调试信息）"""
-    st.write(f"🔍 调试: 查询用户ID = {user_id}")
-    
+    """获取用户资料"""
     if not user_id or user_id == "admin":
-        st.write("🔍 调试: 用户是 admin，返回默认值")
         return {"subscription_tier": "free", "free_trials_remaining": 30}
-    
     try:
         response = supabase_get("profiles", user_id)
-        st.write(f"🔍 调试: API 响应状态码 = {response.status_code}")
-        
         if response.status_code == 200 and response.json():
             data = response.json()[0]
-            st.write(f"🔍 调试: 找到用户数据 - 订阅: {data.get('subscription_tier')}, 剩余次数: {data.get('free_trials_remaining')}")
             return {
                 "subscription_tier": data.get("subscription_tier", "free"),
                 "free_trials_remaining": data.get("free_trials_remaining", 30)
             }
-        else:
-            st.write(f"🔍 调试: 响应内容 = {response.text}")
-    except Exception as e:
-        st.error(f"获取用户资料错误: {e}")
-    
+    except Exception:
+        pass
     return {"subscription_tier": "free", "free_trials_remaining": 30}
 
 def get_user_total_usage(user_id: str):
+    """获取用户总使用次数"""
     if not user_id or user_id == "admin":
         return 0
     try:
@@ -332,7 +323,6 @@ def render_login_form():
             if submitted:
                 if email and password:
                     try:
-                        # 使用 Supabase Auth REST API
                         auth_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
                         auth_headers = {
                             "apikey": SUPABASE_KEY,
@@ -345,15 +335,10 @@ def render_login_form():
                             data = response.json()
                             user_id = data.get("user", {}).get("id")
                             
-                            # 🆕 调试信息
-                            st.success(f"✅ 登录成功！")
-                            st.code(f"用户ID: {user_id}")
-                            st.code(f"邮箱: {email}")
-                            
                             st.session_state.authenticated = True
                             st.session_state.user_id = user_id
                             st.session_state.user_email = email
-                            st.stop()  # 临时停止，查看调试信息
+                            st.rerun()
                         else:
                             st.error(f"登录失败: {response.json().get('msg', '未知错误')}")
                     except Exception as e:
@@ -426,21 +411,6 @@ def render_reset_password_form():
             st.rerun()
 
 def render_main_app():
-    # 🧪 最简单的直接测试
-    if st.button("🧪 直接API测试"):
-        import requests
-        url = "https://hmvwgqcbwbdsfppycxkt.supabase.co/rest/v1/profiles"
-        headers = {
-            "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtdndncWNid2Jkc2ZwcHljeGt0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk5NTE3NCwiZXhwIjoyMDkyNTcxMTc0fQ.FoaM2tBHNMCQrR-IToU9GUSG6QgzClJBsWNEYDI6QoU",
-            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtdndncWNid2Jkc2ZwcHljeGt0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk5NTE3NCwiZXhwIjoyMDkyNTcxMTc0fQ.FoaM2tBHNMCQrR-IToU9GUSG6QgzClJBsWNEYDI6QoU"
-        }
-        response = requests.get(url, headers=headers)
-        st.code(f"状态码: {response.status_code}")
-        st.code(f"响应: {response.text}")
-        return
-    
-    # 原有的代码继续...
-    
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         profile = get_user_profile(st.session_state.user_id)
@@ -462,7 +432,7 @@ def render_main_app():
         with col_sub3:
             st.metric(t()["total_usage"], total_usage)
         
-        # 测试区
+        # 测试区（可删除）
         st.markdown("---")
         st.markdown("### 🧪 测试区")
         col_test1, col_test2, col_test3 = st.columns(3)
