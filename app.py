@@ -1,6 +1,7 @@
 import streamlit as st
 from supabase import create_client
 from datetime import datetime
+import requests
 
 # ==================== 页面配置 ====================
 st.set_page_config(page_title="TechLife Suite", page_icon="🔧", layout="wide")
@@ -155,14 +156,20 @@ Let AI become your Chief Quality Engineer.
     }
 }
 
-# ==================== Supabase 初始化 ====================
+# ==================== Supabase 配置 ====================
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_SERVICE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]  # 使用 service_role key
+
+# 创建带正确 headers 的 supabase 客户端
 @st.cache_resource
 def init_supabase():
+    """使用 service_role key 初始化，绕过 RLS"""
     try:
-        url = st.secrets["SUPABASE_URL"]
-        key = st.secrets["SUPABASE_KEY"]
-        return create_client(url, key)
+        # 直接使用 service_role key
+        client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        return client
     except Exception as e:
+        st.error(f"Supabase 连接失败: {e}")
         return None
 
 supabase = init_supabase()
@@ -200,8 +207,8 @@ def get_user_profile(user_id: str):
             .execute()
         if response.data:
             return response.data[0]
-    except Exception:
-        pass
+    except Exception as e:
+        st.error(f"获取用户资料错误: {e}")
     return {"subscription_tier": "free", "free_trials_remaining": 30}
 
 def get_user_total_usage(user_id: str):
