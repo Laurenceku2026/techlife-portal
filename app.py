@@ -506,7 +506,7 @@ def render_main_app():
                     st.write(f"STRIPE_PRICE_YEARLY: {st.secrets.get('STRIPE_PRICE_YEARLY', '未设置')}")
                 
                 # 月付按钮
-                                if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
+                if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
                     try:
                         import stripe
                         stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
