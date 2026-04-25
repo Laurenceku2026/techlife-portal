@@ -24,7 +24,6 @@ stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
 # ==================== Supabase 配置 ====================
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
-SUPABASE_ANON_KEY = st.secrets.get("SUPABASE_ANON_KEY", SUPABASE_KEY)
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -121,7 +120,7 @@ TEXTS = {
         "payment_pending": "支付未完成",
         "go_to_payment": "💰 前往 Stripe 完成支付",
         "payment_created": "支付会话已创建",
-        "refresh_tip": "支付成功后，请点击上方的刷新按钮 🔄 更新状态",
+        "refresh_tip": "支付成功后，页面将自动刷新",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -198,7 +197,7 @@ Let AI become your Chief Quality Engineer.
         "payment_pending": "Payment not completed",
         "go_to_payment": "💰 Go to Stripe to complete payment",
         "payment_created": "Payment session created",
-        "refresh_tip": "After payment, please click the refresh button 🔄 above to update status",
+        "refresh_tip": "Page will refresh automatically after payment",
     }
 }
 
@@ -226,7 +225,7 @@ def t():
 # ==================== 辅助函数 ====================
 def get_user_profile(user_id: str):
     if not user_id or user_id == "admin":
-        return {"subscription_tier": "free", "free_trials_remaining": 30, "subscription_expires_at": None}
+        return {"subscription_tier": "free", "free_trials_remaining": 30, "subscription_expires_at": None, "email": ""}
     try:
         response = supabase_get("profiles", user_id)
         if response.status_code == 200 and response.json():
@@ -234,11 +233,12 @@ def get_user_profile(user_id: str):
             return {
                 "subscription_tier": data.get("subscription_tier", "free"),
                 "free_trials_remaining": data.get("free_trials_remaining", 30),
-                "subscription_expires_at": data.get("subscription_expires_at")
+                "subscription_expires_at": data.get("subscription_expires_at"),
+                "email": data.get("email", "")
             }
     except Exception:
         pass
-    return {"subscription_tier": "free", "free_trials_remaining": 30, "subscription_expires_at": None}
+    return {"subscription_tier": "free", "free_trials_remaining": 30, "subscription_expires_at": None, "email": ""}
 
 def get_user_total_usage(user_id: str):
     if not user_id or user_id == "admin":
@@ -259,32 +259,13 @@ def create_checkout_session(user_id: str, user_email: str, price_id: str):
             payment_method_types=['card'],
             line_items=[{'price': price_id, 'quantity': 1}],
             mode='subscription',
-            success_url="https://techlife-app.streamlit.app?session_id={CHECKOUT_SESSION_ID}",
+            success_url=f"https://techlife-app.streamlit.app?session_id={{CHECKOUT_SESSION_ID}}&user_id={user_id}",
             cancel_url="https://techlife-app.streamlit.app",
             metadata={'user_id': user_id, 'price_id': price_id}
         )
         return session.url, None
     except Exception as e:
         return None, str(e)
-
-def handle_stripe_callback():
-    """处理 Stripe 支付成功回调"""
-    query_params = st.query_params
-    if "session_id" in query_params:
-        session_id = query_params["session_id"]
-        try:
-            session = stripe.checkout.Session.retrieve(session_id)
-            if session.payment_status == "paid":
-                user_id = session.metadata.get("user_id")
-                supabase_patch("profiles", user_id, {"subscription_tier": "pro"})
-                st.success(t()["payment_success"])
-                st.balloons()
-                st.query_params.clear()
-                st.rerun()
-            else:
-                st.warning(t()["payment_pending"])
-        except Exception as e:
-            st.error(f"验证失败: {e}")
 
 # ==================== UI 组件 ====================
 def render_sidebar():
@@ -472,8 +453,42 @@ def render_reset_password_form():
             st.rerun()
 
 def render_main_app():
-    # 处理 Stripe 支付成功回调
-    handle_stripe_callback()
+    # 处理 Stripe 支付成功回调并自动恢复登录
+    query_params = st.query_params
+    
+    if "session_id" in query_params:
+        session_id = query_params["session_id"]
+        user_id_from_url = query_params.get("user_id", None)
+        
+        # 如果 URL 中有 user_id 且未登录，自动恢复登录状态
+        if user_id_from_url and not st.session_state.authenticated:
+            try:
+                # 从数据库获取用户信息
+                response = supabase_get("profiles", user_id_from_url)
+                if response.status_code == 200 and response.json():
+                    user_data = response.json()[0]
+                    st.session_state.authenticated = True
+                    st.session_state.user_id = user_id_from_url
+                    st.session_state.user_email = user_data.get("email", "")
+                    st.info("正在恢复登录状态...")
+            except Exception as e:
+                st.error(f"恢复登录失败: {e}")
+        
+        # 处理支付验证
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+            if session.payment_status == "paid":
+                user_id = session.metadata.get("user_id")
+                supabase_patch("profiles", user_id, {"subscription_tier": "pro"})
+                st.success(t()["payment_success"])
+                st.balloons()
+                # 清除 URL 参数
+                st.query_params.clear()
+                st.rerun()
+            else:
+                st.warning(t()["payment_pending"])
+        except Exception as e:
+            st.error(f"验证失败: {e}")
     
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
