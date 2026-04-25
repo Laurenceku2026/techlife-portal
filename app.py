@@ -432,6 +432,42 @@ def render_reset_password_form():
             st.rerun()
 
 def render_main_app():
+    # 自定义 CSS 让按钮更紧凑、红底白字
+    st.markdown("""
+    <style>
+    /* 支付按钮红底白字 */
+    div[data-testid="column"]:nth-of-type(4) button {
+        background-color: #dc3545 !important;
+        color: white !important;
+        border: none !important;
+        font-weight: 600 !important;
+        border-radius: 8px !important;
+        padding: 6px 12px !important;
+        margin: 4px 0 !important;
+        font-size: 14px !important;
+    }
+    div[data-testid="column"]:nth-of-type(4) button:hover {
+        background-color: #c82333 !important;
+    }
+    /* 指标卡片居中 */
+    div[data-testid="stMetric"] {
+        text-align: center !important;
+        justify-content: center !important;
+    }
+    div[data-testid="stMetric"] label {
+        text-align: center !important;
+        width: 100% !important;
+        justify-content: center !important;
+    }
+    /* 刷新按钮样式 */
+    button[kind="secondary"] {
+        background-color: #6c757d !important;
+        color: white !important;
+        border-radius: 8px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         profile = get_user_profile(st.session_state.user_id)
@@ -439,11 +475,18 @@ def render_main_app():
         remaining = profile.get("free_trials_remaining", 30)
         total_usage = get_user_total_usage(st.session_state.user_id)
         
-        st.markdown(f"<h3 style='text-align: center;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
+        # 第一行：欢迎语 + 刷新按钮
+        col_welcome, col_refresh = st.columns([6, 1])
+        with col_welcome:
+            st.markdown(f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
+        with col_refresh:
+            if st.button("🔄", key="refresh_btn", help="刷新数据", use_container_width=True):
+                st.rerun()
+        
         st.markdown("---")
         
-        # 一行布局：订阅卡片 + 剩余次数卡片 + 总使用次数卡片 + 刷新按钮 + 升级区域
-        col_card1, col_card2, col_card3, col_refresh, col_upgrade = st.columns([1, 1, 1, 0.5, 1.2])
+        # 第二行：四个卡片（订阅、剩余次数、总使用次数、升级区域）
+        col_card1, col_card2, col_card3, col_upgrade = st.columns([1, 1, 1, 1.2])
         
         with col_card1:
             st.metric(t()["subscription"], "💎 Pro" if tier == "pro" else "🔒 Free", border=True)
@@ -460,15 +503,10 @@ def render_main_app():
         with col_card3:
             st.metric(t()["total_usage"], total_usage, border=True)
         
-        with col_refresh:
-            st.write("")  # 垂直对齐
-            st.write("")
-            if st.button("🔄", key="refresh_btn", help="刷新数据", use_container_width=True):
-                st.rerun()
-        
         with col_upgrade:
             if tier == "free":
-                st.markdown(f"**{t()['upgrade_title']}**")
+                # 升级区域居中显示
+                st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
                 if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
                     url, error = create_checkout_session(
                         st.session_state.user_id, st.session_state.user_email,
@@ -488,8 +526,8 @@ def render_main_app():
                     else:
                         st.error(f"创建支付会话失败: {error}")
             else:
-                st.markdown(f"**{t()['upgrade_title']}**")
-                st.success("✅ 已是专业版")
+                st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
+                st.success("✅ 已是专业版", icon="🎉")
         
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
