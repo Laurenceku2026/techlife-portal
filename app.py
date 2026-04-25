@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import stripe
 from datetime import datetime, timedelta
 
 # ==================== 页面配置 ====================
@@ -16,6 +17,9 @@ APP_URLS = {
     "dqa": "https://ai-design-dfmea.streamlit.app",
     "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app"
 }
+
+# ==================== Stripe 配置 ====================
+stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
 
 # ==================== Supabase 配置 ====================
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -39,12 +43,6 @@ def supabase_patch(table: str, user_id: str, data: dict):
     """PATCH 请求（更新）"""
     url = f"{SUPABASE_URL}/rest/v1/{table}?id=eq.{user_id}"
     response = requests.patch(url, headers=HEADERS, json=data)
-    return response
-
-def supabase_post(table: str, data: dict):
-    """POST 请求"""
-    url = f"{SUPABASE_URL}/rest/v1/{table}"
-    response = requests.post(url, headers=HEADERS, json=data)
     return response
 
 # ==================== 多语言配置 ====================
@@ -112,6 +110,14 @@ TEXTS = {
         "register_success": "注册成功！请登录",
         "email_exists": "该邮箱已注册，请直接登录",
         "open_new_tab": "🔗 点击按钮将在新标签页中打开应用",
+        "upgrade_title": "💎 升级到专业版",
+        "upgrade_features": "**专业版功能：**",
+        "feature_1": "- ✅ 无限次使用所有应用",
+        "feature_2": "- ✅ 优先技术支持",
+        "feature_3": "- ✅ 导出完整报告",
+        "monthly": "📅 月付 $29/月",
+        "yearly": "📅 年付 $299/年 (省 $49)",
+        "upgrade_success": "✅ 升级成功！您是专业版用户了！",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -176,6 +182,14 @@ Let AI become your Chief Quality Engineer.
         "register_success": "Registration successful! Please login.",
         "email_exists": "Email already registered. Please login.",
         "open_new_tab": "🔗 Click button to open app in new tab",
+        "upgrade_title": "💎 Upgrade to Pro",
+        "upgrade_features": "**Pro Features:**",
+        "feature_1": "- ✅ Unlimited access to all apps",
+        "feature_2": "- ✅ Priority support",
+        "feature_3": "- ✅ Export full reports",
+        "monthly": "📅 Monthly $29/month",
+        "yearly": "📅 Yearly $299/year (Save $49)",
+        "upgrade_success": "✅ Upgrade successful! You are now a Pro user!",
     }
 }
 
@@ -210,17 +224,17 @@ def get_user_profile(user_id: str):
             data = response.json()[0]
             return {
                 "subscription_tier": data.get("subscription_tier", "free"),
-                "free_trials_remaining": data.get("free_trials_remaining", 30)
+                "free_trials_remaining": data.get("free_trials_remaining", 30),
+                "subscription_expires_at": data.get("subscription_expires_at")
             }
     except Exception:
         pass
-    return {"subscription_tier": "free", "free_trials_remaining": 30}
+    return {"subscription_tier": "free", "free_trials_remaining": 30, "subscription_expires_at": None}
 
 def get_user_total_usage(user_id: str):
     if not user_id or user_id == "admin":
         return 0
     try:
-        # usage_logs 表使用 user_id 字段
         response = supabase_get("usage_logs", user_id, id_field="user_id")
         if response.status_code == 200:
             data = response.json()
@@ -229,7 +243,65 @@ def get_user_total_usage(user_id: str):
         pass
     return 0
 
-# ==================== UI 组件 ====================
+def create_checkout_session(user_id: str, user_email: str, price_id: str):
+    """创建 Stripe Checkout Session"""
+    try:
+        session = stripe.checkout.Session.create(
+            customer_email=user_email,
+            payment_method_types=['card'],
+            line_items=[{
+                'price': price_id,
+                'quantity': 1,
+            }],
+            mode='subscription',
+            success_url="https://techlife-app.streamlit.app?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url="https://techlife-app.streamlit.app",
+            metadata={
+                'user_id': user_id,
+                'price_id': price_id
+            }
+        )
+        return session.url, None
+    except Exception as e:
+        return None, str(e)
+
+def render_upgrade_section(tier: str, user_id: str, user_email: str):
+    """渲染升级到专业版的界面"""
+    if tier == "pro":
+        return
+    
+    st.markdown("---")
+    st.markdown(f"### {t()['upgrade_title']}")
+    st.markdown(t()["upgrade_features"])
+    st.markdown(t()["feature_1"])
+    st.markdown(t()["feature_2"])
+    st.markdown(t()["feature_3"])
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button(t()["monthly"], key="monthly_btn", use_container_width=True):
+            url, error = create_checkout_session(
+                user_id=user_id,
+                user_email=user_email,
+                price_id=st.secrets["STRIPE_PRICE_MONTHLY"]
+            )
+            if url:
+                st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
+            else:
+                st.error(f"创建支付会话失败: {error}")
+    
+    with col2:
+        if st.button(t()["yearly"], key="yearly_btn", use_container_width=True):
+            url, error = create_checkout_session(
+                user_id=user_id,
+                user_email=user_email,
+                price_id=st.secrets["STRIPE_PRICE_YEARLY"]
+            )
+            if url:
+                st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
+            else:
+                st.error(f"创建支付会话失败: {error}")
+
 def render_sidebar():
     with st.sidebar:
         st.title(t()["sidebar_title"])
@@ -253,6 +325,9 @@ def render_sidebar():
                 st.caption(f"📊 {t()['total_usage']}: {total_usage}")
             else:
                 st.caption(f"🎫 {t()['free_trial']}: ∞")
+                expires_at = profile.get("subscription_expires_at")
+                if expires_at:
+                    st.caption(f"📅 到期: {expires_at[:10]}")
             
             if st.button(t()["logout"], use_container_width=True):
                 st.session_state.authenticated = False
@@ -260,6 +335,9 @@ def render_sidebar():
                 st.session_state.user_email = None
                 st.session_state.admin_mode = False
                 st.rerun()
+            
+            # 升级按钮
+            render_upgrade_section(tier, st.session_state.user_id, st.session_state.user_email)
 
 def render_top_buttons():
     col1, col2, col3, col4, col5 = st.columns([8, 1.2, 1.2, 1.2, 1])
@@ -489,59 +567,20 @@ def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     
     try:
-        # 获取 profiles 表数据
         response = supabase_get("profiles")
         if response.status_code == 200:
             users = response.json()
         else:
             users = []
         
-        # 获取 auth.users 中的详细信息（注册时间、最后登录等）
-        auth_users = {}
-        try:
-            auth_url = f"{SUPABASE_URL}/auth/v1/admin/users"
-            auth_headers = {
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}"
-            }
-            auth_response = requests.get(auth_url, headers=auth_headers)
-            if auth_response.status_code == 200:
-                data = auth_response.json()
-                # 修复：响应可能是 {"users": [...]} 或直接是列表
-                if isinstance(data, dict) and "users" in data:
-                    user_list = data["users"]
-                elif isinstance(data, list):
-                    user_list = data
-                else:
-                    user_list = []
-                
-                for u in user_list:
-                    auth_users[u.get("id")] = {
-                        "created_at": u.get("created_at", ""),
-                        "last_sign_in_at": u.get("last_sign_in_at", ""),
-                        "email_confirmed_at": u.get("email_confirmed_at", ""),
-                        "phone": u.get("phone", ""),
-                        "user_metadata": u.get("user_metadata", {})
-                    }
-        except Exception as e:
-            st.warning(f"获取用户信息失败: {e}")
-        
-        # 统计数据
         pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
-        confirmed_count = 0
-        for u in users:
-            auth_info = auth_users.get(u.get("id"), {})
-            if auth_info.get("email_confirmed_at"):
-                confirmed_count += 1
         
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.metric(t()["total_users"], len(users))
         with col2:
-            st.metric("已确认邮箱", confirmed_count)
-        with col3:
             st.metric(t()["pro_users"], len(pro_users))
-        with col4:
+        with col3:
             st.metric(t()["free_users"], len(users) - len(pro_users))
         
         st.markdown("---")
@@ -550,37 +589,12 @@ def render_admin_panel():
         if users:
             user_data = []
             for user in users:
-                auth_info = auth_users.get(user.get("id"), {})
-                
-                # 注册时间
-                created_at = auth_info.get("created_at", "")
-                if created_at:
-                    created_at = created_at[:10]
-                else:
-                    created_at = "-"
-                
-                # 最后登录时间
-                last_login = auth_info.get("last_sign_in_at", "")
-                if last_login:
-                    last_login = last_login[:10]
-                else:
-                    last_login = "-"
-                
-                # 邮箱确认状态
-                email_confirmed = "✅" if auth_info.get("email_confirmed_at") else "❌"
-                
                 user_data.append({
                     t()["email_col"]: user.get("email"),
-                    "邮箱确认": email_confirmed,
                     t()["subscription_col"]: "💎 Pro" if user.get("subscription_tier") == "pro" else "🔒 Free",
-                    "剩余次数": user.get("free_trials_remaining", 30),
-                    "注册时间": created_at,
-                    "最后登录": last_login,
-                    "到期时间": user.get("subscription_expires_at", "-")[:10] if user.get("subscription_expires_at") else "-",
+                    t()["trials_left"]: user.get("free_trials_remaining", 30),
                 })
-            
-            with st.container(height=400):
-                st.dataframe(user_data, use_container_width=True)
+            st.dataframe(user_data, use_container_width=True)
         else:
             st.info("暂无用户数据")
         
@@ -589,158 +603,53 @@ def render_admin_panel():
         
         if users:
             user_options = [f"{u.get('email')} ({u.get('subscription_tier')})" for u in users]
-            selected_user_display = st.selectbox(t()["select_user"], user_options, key="admin_select_user")
+            selected_user_display = st.selectbox(t()["select_user"], user_options)
             selected_email = selected_user_display.split(" ")[0] if selected_user_display else None
             selected_user = next((u for u in users if u.get("email") == selected_email), None)
             
             if selected_user:
-                # 显示选中用户的详细信息
-                with st.expander("用户详细信息", expanded=True):
-                    auth_info = auth_users.get(selected_user.get("id"), {})
-                    col_info1, col_info2 = st.columns(2)
-                    with col_info1:
-                        st.write(f"**邮箱:** {selected_user.get('email')}")
-                        st.write(f"**订阅:** {selected_user.get('subscription_tier')}")
-                        st.write(f"**剩余次数:** {selected_user.get('free_trials_remaining', 30)}")
-                    with col_info2:
-                        st.write(f"**注册时间:** {auth_info.get('created_at', '-')[:10] if auth_info.get('created_at') else '-'}")
-                        st.write(f"**最后登录:** {auth_info.get('last_sign_in_at', '-')[:10] if auth_info.get('last_sign_in_at') else '-'}")
-                        st.write(f"**邮箱确认:** {'是' if auth_info.get('email_confirmed_at') else '否'}")
-                
-                # 订阅管理表单
                 col_sub1, col_sub2 = st.columns(2)
                 with col_sub1:
                     current_tier = selected_user.get("subscription_tier", "free")
                     new_tier = st.selectbox(t()["set_subscription"], ["free", "pro"], 
-                                            index=0 if current_tier == "free" else 1,
-                                            key="admin_new_tier")
+                                            index=0 if current_tier == "free" else 1)
                 with col_sub2:
                     new_trials = st.number_input(t()["set_trials"], min_value=0, max_value=100, 
-                                                  value=selected_user.get("free_trials_remaining", 30),
-                                                  key="admin_new_trials")
+                                                  value=selected_user.get("free_trials_remaining", 30))
                 
-                # 设置到期时间（专业版专用）
-                expires_at = None
-                months = 1
-                if new_tier == "pro":
-                    months = st.number_input("月数", min_value=1, max_value=12, value=1, key="admin_months")
-                    expires_at = (datetime.now() + timedelta(days=30 * months)).isoformat()
-                
-                col_btn1, col_btn2, col_btn3 = st.columns(3)
-                with col_btn1:
-                    if st.button(t()["update_btn"], use_container_width=True, key="admin_update_btn"):
-                        update_data = {
-                            "subscription_tier": new_tier,
-                            "free_trials_remaining": new_trials
-                        }
-                        if expires_at:
-                            update_data["subscription_expires_at"] = expires_at
-                        else:
-                            update_data["subscription_expires_at"] = None
-                        
-                        patch_resp = supabase_patch("profiles", selected_user.get("id"), update_data)
-                        if patch_resp.status_code in [200, 204]:
-                            st.success(f"已更新 {selected_email}")
-                            st.rerun()
-                        else:
-                            st.error(f"更新失败: {patch_resp.text}")
-                
-                # 重置密码按钮
-                with col_btn2:
-                    if st.button("📧 重置密码", use_container_width=True, key="admin_reset_pwd"):
-                        try:
-                            reset_url = f"{SUPABASE_URL}/auth/v1/recover"
-                            reset_headers = {
-                                "apikey": SUPABASE_KEY,
-                                "Authorization": f"Bearer {SUPABASE_KEY}",
-                                "Content-Type": "application/json"
-                            }
-                            reset_data = {"email": selected_email}
-                            reset_response = requests.post(reset_url, headers=reset_headers, json=reset_data)
-                            if reset_response.status_code == 200:
-                                st.success(f"✅ 密码重置邮件已发送至 {selected_email}")
-                                st.info("用户点击邮件中的链接即可设置新密码")
-                            else:
-                                st.error(f"发送失败: {reset_response.text}")
-                        except Exception as e:
-                            st.error(f"发送失败: {e}")
-                
-                # 发送确认邮件按钮（修复版）
-                with col_btn3:
-                    if st.button("📧 发送确认邮件", use_container_width=True, key="admin_confirm_email"):
-                        try:
-                            # 方法1：使用重新发送确认邮件 API
-                            confirm_url = f"{SUPABASE_URL}/auth/v1/admin/users/{selected_user.get('id')}/resend_confirmation"
-                            confirm_headers = {
-                                "apikey": SUPABASE_KEY,
-                                "Authorization": f"Bearer {SUPABASE_KEY}",
-                                "Content-Type": "application/json"
-                            }
-                            confirm_response = requests.post(confirm_url, headers=confirm_headers)
-                            
-                            if confirm_response.status_code == 200:
-                                st.success(f"✅ 确认邮件已发送至 {selected_email}")
-                            elif confirm_response.status_code == 404:
-                                # 方法2：如果 API 不存在，使用重置密码邮件（用户点击后也可确认邮箱）
-                                alt_url = f"{SUPABASE_URL}/auth/v1/recover"
-                                alt_data = {"email": selected_email}
-                                alt_response = requests.post(alt_url, headers=confirm_headers, json=alt_data)
-                                if alt_response.status_code == 200:
-                                    st.success(f"✅ 邮件已发送至 {selected_email}")
-                                    st.info("用户点击邮件中的链接后登录即可确认邮箱")
-                                else:
-                                    st.error(f"发送失败: {alt_response.text}")
-                            else:
-                                st.error(f"发送失败: {confirm_response.text}")
-                        except Exception as e:
-                            st.error(f"发送失败: {e}")
+                if st.button(t()["update_btn"], use_container_width=True):
+                    patch_resp = supabase_patch("profiles", selected_user.get("id"), {
+                        "subscription_tier": new_tier,
+                        "free_trials_remaining": new_trials
+                    })
+                    if patch_resp.status_code in [200, 204]:
+                        st.success(f"已更新 {selected_email}")
+                        st.rerun()
+                    else:
+                        st.error(f"更新失败: {patch_resp.text}")
         
         st.markdown("---")
         st.subheader(t()["batch_ops"])
-        
-        col_batch1, col_batch2 = st.columns(2)
-        with col_batch1:
-            if st.button(t()["reset_all_trials"], use_container_width=True, key="admin_reset_all"):
-                users_resp = supabase_get("profiles")
-                if users_resp.status_code == 200:
-                    for user in users_resp.json():
-                        if user.get("subscription_tier") == "free":
-                            supabase_patch("profiles", user.get("id"), {"free_trials_remaining": 30})
-                    st.success("所有免费用户次数已重置为 30 次")
-                    st.rerun()
-                else:
-                    st.error("重置失败")
-        
-        with col_batch2:
-            if st.button("📧 发送提醒给未确认用户", use_container_width=True, key="admin_email_all"):
-                success_count = 0
-                for user in users:
-                    auth_info = auth_users.get(user.get("id"), {})
-                    if not auth_info.get("email_confirmed_at"):
-                        try:
-                            reset_url = f"{SUPABASE_URL}/auth/v1/recover"
-                            reset_headers = {
-                                "apikey": SUPABASE_KEY,
-                                "Authorization": f"Bearer {SUPABASE_KEY}",
-                                "Content-Type": "application/json"
-                            }
-                            reset_data = {"email": user.get("email")}
-                            reset_response = requests.post(reset_url, headers=reset_headers, json=reset_data)
-                            if reset_response.status_code == 200:
-                                success_count += 1
-                        except Exception:
-                            pass
-                st.success(f"已向 {success_count} 位未确认用户发送邮件")
+        if st.button(t()["reset_all_trials"], use_container_width=True):
+            users_resp = supabase_get("profiles")
+            if users_resp.status_code == 200:
+                for user in users_resp.json():
+                    if user.get("subscription_tier") == "free":
+                        supabase_patch("profiles", user.get("id"), {"free_trials_remaining": 30})
+                st.success("所有免费用户次数已重置为 30 次")
                 st.rerun()
+            else:
+                st.error("重置失败")
         
     except Exception as e:
         st.warning(f"无法获取数据: {e}")
     
     st.markdown("---")
-    if st.button(t()["exit_admin"], use_container_width=True, key="admin_exit"):
+    if st.button(t()["exit_admin"], use_container_width=True):
         st.session_state.admin_mode = False
         st.session_state.authenticated = False
         st.rerun()
+
 def main():
     render_sidebar()
     render_top_buttons()
