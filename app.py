@@ -24,6 +24,7 @@ stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
 # ==================== Supabase 配置 ====================
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
+SUPABASE_ANON_KEY = st.secrets.get("SUPABASE_ANON_KEY", SUPABASE_KEY)
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -118,6 +119,9 @@ TEXTS = {
         "pro_feature_3": "- ✅ 导出完整报告",
         "payment_success": "✅ 支付成功！您已是专业版用户",
         "payment_pending": "支付未完成",
+        "go_to_payment": "💰 前往 Stripe 完成支付",
+        "payment_created": "支付会话已创建",
+        "refresh_tip": "支付成功后，请点击上方的刷新按钮 🔄 更新状态",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -192,6 +196,9 @@ Let AI become your Chief Quality Engineer.
         "pro_feature_3": "- ✅ Export full reports",
         "payment_success": "✅ Payment successful! You are now a Pro user!",
         "payment_pending": "Payment not completed",
+        "go_to_payment": "💰 Go to Stripe to complete payment",
+        "payment_created": "Payment session created",
+        "refresh_tip": "After payment, please click the refresh button 🔄 above to update status",
     }
 }
 
@@ -308,6 +315,8 @@ def render_sidebar():
                     st.caption(f"📅 {t()['expires_at']}: {expires_at[:10]}")
             
             if st.button(t()["logout"], use_container_width=True):
+                if "payment_url" in st.session_state:
+                    del st.session_state.payment_url
                 st.session_state.authenticated = False
                 st.session_state.user_id = None
                 st.session_state.user_email = None
@@ -479,6 +488,8 @@ def render_main_app():
             st.markdown(f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
         with col_refresh:
             if st.button("🔄", key="refresh_btn", help="刷新数据", use_container_width=True):
+                if "payment_url" in st.session_state:
+                    del st.session_state.payment_url
                 st.rerun()
         
         st.markdown("---")
@@ -504,24 +515,40 @@ def render_main_app():
         with col_upgrade:
             if tier == "free":
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
+                
+                # 月付按钮
                 if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
-                    url, error = create_checkout_session(
-                        st.session_state.user_id, st.session_state.user_email,
-                        st.secrets["STRIPE_PRICE_MONTHLY"]
-                    )
-                    if url:
-                        st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                    else:
-                        st.error(f"创建支付会话失败: {error}")
+                    with st.spinner("正在创建支付会话..."):
+                        url, error = create_checkout_session(
+                            st.session_state.user_id, st.session_state.user_email,
+                            st.secrets["STRIPE_PRICE_MONTHLY"]
+                        )
+                        if url:
+                            st.session_state.payment_url = url
+                            st.session_state.payment_type = "monthly"
+                            st.rerun()
+                        else:
+                            st.error(f"创建支付会话失败: {error}")
+                
+                # 年付按钮
                 if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True):
-                    url, error = create_checkout_session(
-                        st.session_state.user_id, st.session_state.user_email,
-                        st.secrets["STRIPE_PRICE_YEARLY"]
-                    )
-                    if url:
-                        st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                    else:
-                        st.error(f"创建支付会话失败: {error}")
+                    with st.spinner("正在创建支付会话..."):
+                        url, error = create_checkout_session(
+                            st.session_state.user_id, st.session_state.user_email,
+                            st.secrets["STRIPE_PRICE_YEARLY"]
+                        )
+                        if url:
+                            st.session_state.payment_url = url
+                            st.session_state.payment_type = "yearly"
+                            st.rerun()
+                        else:
+                            st.error(f"创建支付会话失败: {error}")
+                
+                # 显示支付链接
+                if "payment_url" in st.session_state and st.session_state.payment_url:
+                    st.success(f"✅ {st.session_state.payment_type} {t()['payment_created']}")
+                    st.link_button(t()["go_to_payment"], st.session_state.payment_url, use_container_width=True)
+                    st.info(t()["refresh_tip"])
             else:
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
                 st.success("✅ 已是专业版", icon="🎉")
