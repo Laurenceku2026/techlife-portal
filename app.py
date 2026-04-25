@@ -452,6 +452,23 @@ def render_main_app():
         
         # 第一行：欢迎语 + 刷新按钮
         col_welcome, col_refresh = st.columns([6, 1])
+                # 临时测试按钮
+        with st.expander("🧪 Stripe 测试（调试用）"):
+            if st.button("测试 Stripe 连接"):
+                try:
+                    import stripe
+                    stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
+                    st.write(f"✅ Stripe 版本: {stripe.__version__}")
+                    st.write(f"✅ Secret Key 前缀: {st.secrets['STRIPE_SECRET_KEY'][:15]}...")
+                    
+                    # 测试 Price ID 是否存在
+                    price = stripe.Price.retrieve(st.secrets["STRIPE_PRICE_MONTHLY"])
+                    st.write(f"✅ Price 存在: {price.product}")
+                    
+                    st.success("Stripe 配置正确！")
+                except Exception as e:
+                    st.error(f"❌ 错误详情: {type(e).__name__}: {e}")
+                    st.code(f"完整错误: {e}")
         with col_welcome:
             st.markdown(f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
         with col_refresh:
