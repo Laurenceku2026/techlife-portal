@@ -495,14 +495,15 @@ def render_main_app():
         with col_card3:
             st.metric(t()["total_usage"], total_usage, border=True)
         
-        with col_upgrade:
+                with col_upgrade:
             if tier == "free":
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
                 
-                # 显示错误信息（如果有）
-                if "stripe_error" in st.session_state and st.session_state.stripe_error:
-                    st.error(st.session_state.stripe_error)
-                    st.session_state.stripe_error = None
+                # 临时：显示 Stripe 配置状态
+                with st.expander("🔧 Stripe 调试信息"):
+                    st.write(f"STRIPE_SECRET_KEY 存在: {'✅' if 'STRIPE_SECRET_KEY' in st.secrets else '❌'}")
+                    st.write(f"STRIPE_PRICE_MONTHLY: {st.secrets.get('STRIPE_PRICE_MONTHLY', '未设置')}")
+                    st.write(f"STRIPE_PRICE_YEARLY: {st.secrets.get('STRIPE_PRICE_YEARLY', '未设置')}")
                 
                 # 月付按钮
                 if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
@@ -510,6 +511,7 @@ def render_main_app():
                         import stripe
                         stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
                         
+                        st.write("🔍 正在创建 Stripe 会话...")
                         session = stripe.checkout.Session.create(
                             customer_email=st.session_state.user_email,
                             payment_method_types=['card'],
@@ -519,17 +521,22 @@ def render_main_app():
                             cancel_url="https://techlife-app.streamlit.app",
                             metadata={'user_id': st.session_state.user_id, 'price_id': st.secrets["STRIPE_PRICE_MONTHLY"]}
                         )
-                        st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
+                        st.success(f"✅ 会话创建成功！URL: {session.url}")
+                        st.markdown(f'<meta http-equiv="refresh" content="3; url={session.url}">', unsafe_allow_html=True)
+                        st.info("3秒后自动跳转到 Stripe 支付页面...")
+                        st.stop()  # 暂停，显示信息
                     except Exception as e:
-                        st.session_state.stripe_error = f"❌ Stripe 错误: {e}"
-                        st.rerun()
+                        st.error(f"❌ Stripe 错误:")
+                        st.code(str(e))
+                        st.stop()  # 暂停，显示错误
                 
-                # 年付按钮
+                # 年付按钮（类似处理）
                 if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True):
                     try:
                         import stripe
                         stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
                         
+                        st.write("🔍 正在创建 Stripe 会话...")
                         session = stripe.checkout.Session.create(
                             customer_email=st.session_state.user_email,
                             payment_method_types=['card'],
@@ -539,13 +546,18 @@ def render_main_app():
                             cancel_url="https://techlife-app.streamlit.app",
                             metadata={'user_id': st.session_state.user_id, 'price_id': st.secrets["STRIPE_PRICE_YEARLY"]}
                         )
-                        st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
+                        st.success(f"✅ 会话创建成功！URL: {session.url}")
+                        st.markdown(f'<meta http-equiv="refresh" content="3; url={session.url}">', unsafe_allow_html=True)
+                        st.info("3秒后自动跳转到 Stripe 支付页面...")
+                        st.stop()
                     except Exception as e:
-                        st.session_state.stripe_error = f"❌ Stripe 错误: {e}"
-                        st.rerun()
+                        st.error(f"❌ Stripe 错误:")
+                        st.code(str(e))
+                        st.stop()
             else:
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
-                st.success("✅ 已是专业版", icon="🎉")        
+                st.success("✅ 已是专业版", icon="🎉")
+                
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
         st.caption(t()["open_new_tab"])
