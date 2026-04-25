@@ -112,6 +112,10 @@ TEXTS = {
         "yearly": "年付 $299/年",
         "expires_at": "到期",
         "upgrade_title": "升级到专业版",
+        "pro_features_title": "专业版功能：",
+        "pro_feature_1": "- ✅ 无限次使用所有应用",
+        "pro_feature_2": "- ✅ 优先技术支持",
+        "pro_feature_3": "- ✅ 导出完整报告",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -180,6 +184,10 @@ Let AI become your Chief Quality Engineer.
         "yearly": "Yearly $299/year",
         "expires_at": "Expires",
         "upgrade_title": "Upgrade to Pro",
+        "pro_features_title": "Pro Features:",
+        "pro_feature_1": "- ✅ Unlimited access to all apps",
+        "pro_feature_2": "- ✅ Priority support",
+        "pro_feature_3": "- ✅ Export full reports",
     }
 }
 
@@ -283,14 +291,14 @@ def render_sidebar():
                 st.session_state.admin_mode = False
                 st.rerun()
             
-            # 侧边栏升级按钮
+            # 侧边栏升级按钮（红底白字）
             if tier == "free":
                 st.markdown("---")
                 st.markdown(f"### 💎 {t()['upgrade_title']}")
-                st.markdown("**专业版功能：**")
-                st.markdown("- ✅ 无限次使用所有应用")
-                st.markdown("- ✅ 优先技术支持")
-                st.markdown("- ✅ 导出完整报告")
+                st.markdown(f"**{t()['pro_features_title']}**")
+                st.markdown(t()["pro_feature_1"])
+                st.markdown(t()["pro_feature_2"])
+                st.markdown(t()["pro_feature_3"])
                 if st.button(t()["monthly"], key="sidebar_monthly_btn", use_container_width=True, type="primary"):
                     url, error = create_checkout_session(
                         st.session_state.user_id, st.session_state.user_email,
@@ -470,7 +478,8 @@ def render_main_app():
         with col_upgrade:
             if tier == "free":
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
-                if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True, type="primary"):
+                # 主页面支付按钮不加 type="primary"，保持默认颜色
+                if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
                     url, error = create_checkout_session(
                         st.session_state.user_id, st.session_state.user_email,
                         st.secrets["STRIPE_PRICE_MONTHLY"]
@@ -479,7 +488,7 @@ def render_main_app():
                         st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
                     else:
                         st.error(f"创建支付会话失败: {error}")
-                if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True, type="primary"):
+                if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True):
                     url, error = create_checkout_session(
                         st.session_state.user_id, st.session_state.user_email,
                         st.secrets["STRIPE_PRICE_YEARLY"]
@@ -612,7 +621,7 @@ def render_admin_panel():
                 
                 col_b1, col_b2 = st.columns(2)
                 with col_b1:
-                    if st.button(t()["update_btn"], use_container_width=True, key="admin_update_btn"):
+                    if st.button(t()["update_btn"], use_container_width=True, key="admin_update_btn", type="primary"):
                         update_data = {"subscription_tier": new_tier, "free_trials_remaining": new_trials}
                         if new_tier == "pro":
                             months = st.number_input("月数", min_value=1, max_value=12, value=1, key="admin_months")
