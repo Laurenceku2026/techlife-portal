@@ -482,49 +482,50 @@ def render_main_app():
             if tier == "free":
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
                 
+                # 显示错误信息（如果有）
+                if "stripe_error" in st.session_state and st.session_state.stripe_error:
+                    st.error(st.session_state.stripe_error)
+                    st.session_state.stripe_error = None
+                
                 # 月付按钮
                 if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
-                    with st.spinner("正在连接 Stripe..."):
-                        try:
-                            import stripe
-                            stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
-                            
-                            session = stripe.checkout.Session.create(
-                                customer_email=st.session_state.user_email,
-                                payment_method_types=['card'],
-                                line_items=[{'price': st.secrets["STRIPE_PRICE_MONTHLY"], 'quantity': 1}],
-                                mode='subscription',
-                                success_url="https://techlife-app.streamlit.app",
-                                cancel_url="https://techlife-app.streamlit.app",
-                                metadata={'user_id': st.session_state.user_id, 'price_id': st.secrets["STRIPE_PRICE_MONTHLY"]}
-                            )
-                            st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
-                        except Exception as e:
-                            st.error(f"❌ Stripe 错误: {e}")
-                            st.info("请检查 Stripe Secret Key 和 Price ID 配置")
-                            st.stop()
+                    try:
+                        import stripe
+                        stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
+                        
+                        session = stripe.checkout.Session.create(
+                            customer_email=st.session_state.user_email,
+                            payment_method_types=['card'],
+                            line_items=[{'price': st.secrets["STRIPE_PRICE_MONTHLY"], 'quantity': 1}],
+                            mode='subscription',
+                            success_url="https://techlife-app.streamlit.app",
+                            cancel_url="https://techlife-app.streamlit.app",
+                            metadata={'user_id': st.session_state.user_id, 'price_id': st.secrets["STRIPE_PRICE_MONTHLY"]}
+                        )
+                        st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
+                    except Exception as e:
+                        st.session_state.stripe_error = f"❌ Stripe 错误: {e}"
+                        st.rerun()
                 
                 # 年付按钮
                 if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True):
-                    with st.spinner("正在连接 Stripe..."):
-                        try:
-                            import stripe
-                            stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
-                            
-                            session = stripe.checkout.Session.create(
-                                customer_email=st.session_state.user_email,
-                                payment_method_types=['card'],
-                                line_items=[{'price': st.secrets["STRIPE_PRICE_YEARLY"], 'quantity': 1}],
-                                mode='subscription',
-                                success_url="https://techlife-app.streamlit.app",
-                                cancel_url="https://techlife-app.streamlit.app",
-                                metadata={'user_id': st.session_state.user_id, 'price_id': st.secrets["STRIPE_PRICE_YEARLY"]}
-                            )
-                            st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
-                        except Exception as e:
-                            st.error(f"❌ Stripe 错误: {e}")
-                            st.info("请检查 Stripe Secret Key 和 Price ID 配置")
-                            st.stop()
+                    try:
+                        import stripe
+                        stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
+                        
+                        session = stripe.checkout.Session.create(
+                            customer_email=st.session_state.user_email,
+                            payment_method_types=['card'],
+                            line_items=[{'price': st.secrets["STRIPE_PRICE_YEARLY"], 'quantity': 1}],
+                            mode='subscription',
+                            success_url="https://techlife-app.streamlit.app",
+                            cancel_url="https://techlife-app.streamlit.app",
+                            metadata={'user_id': st.session_state.user_id, 'price_id': st.secrets["STRIPE_PRICE_YEARLY"]}
+                        )
+                        st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
+                    except Exception as e:
+                        st.session_state.stripe_error = f"❌ Stripe 错误: {e}"
+                        st.rerun()
             else:
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
                 st.success("✅ 已是专业版", icon="🎉")        
