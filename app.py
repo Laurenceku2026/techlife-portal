@@ -591,36 +591,25 @@ def render_admin_panel():
             }
             auth_response = requests.get(auth_url, headers=auth_headers)
             if auth_response.status_code == 200:
-                data = auth_response.json()
-                if isinstance(data, dict) and "users" in data:
-                    user_list = data["users"]
-                elif isinstance(data, list):
-                    user_list = data
-                else:
-                    user_list = []
-                
-                for u in user_list:
+                for u in auth_response.json():
                     auth_users[u.get("id")] = {
                         "created_at": u.get("created_at", ""),
                         "last_sign_in_at": u.get("last_sign_in_at", ""),
                         "email_confirmed_at": u.get("email_confirmed_at", ""),
+                        "phone": u.get("phone", ""),
+                        "user_metadata": u.get("user_metadata", {})
                     }
         except Exception as e:
-            st.warning(f"获取用户详细信息失败: {e}")
+            st.write(f"获取用户信息失败: {e}")
         
         # 统计数据
         pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
-        confirmed_count = 0
-        for u in users:
-            auth_info = auth_users.get(u.get("id"), {})
-            if auth_info.get("email_confirmed_at"):
-                confirmed_count += 1
         
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric(t()["total_users"], len(users))
         with col2:
-            st.metric("已确认邮箱", confirmed_count)
+            st.metric("已确认邮箱", len([u for u in auth_users.values() if u.get("email_confirmed_at")]))
         with col3:
             st.metric(t()["pro_users"], len(pro_users))
         with col4:
@@ -634,18 +623,21 @@ def render_admin_panel():
             for user in users:
                 auth_info = auth_users.get(user.get("id"), {})
                 
+                # 注册时间
                 created_at = auth_info.get("created_at", "")
                 if created_at:
                     created_at = created_at[:10]
                 else:
                     created_at = "-"
                 
+                # 最后登录时间
                 last_login = auth_info.get("last_sign_in_at", "")
                 if last_login:
                     last_login = last_login[:10]
                 else:
                     last_login = "-"
                 
+                # 邮箱确认状态
                 email_confirmed = "✅" if auth_info.get("email_confirmed_at") else "❌"
                 
                 user_data.append({
@@ -658,6 +650,7 @@ def render_admin_panel():
                     "到期时间": user.get("subscription_expires_at", "-")[:10] if user.get("subscription_expires_at") else "-",
                 })
             
+            # 滚动表格
             with st.container(height=400):
                 st.dataframe(user_data, use_container_width=True)
         else:
@@ -673,18 +666,20 @@ def render_admin_panel():
             selected_user = next((u for u in users if u.get("email") == selected_email), None)
             
             if selected_user:
+                # 显示选中用户的详细信息
                 with st.expander("用户详细信息", expanded=True):
-                    auth_info = auth_users.get(selected_user.get("id"), {})
                     col_info1, col_info2 = st.columns(2)
                     with col_info1:
                         st.write(f"**邮箱:** {selected_user.get('email')}")
                         st.write(f"**订阅:** {selected_user.get('subscription_tier')}")
                         st.write(f"**剩余次数:** {selected_user.get('free_trials_remaining', 30)}")
                     with col_info2:
-                        st.write(f"**注册时间:** {auth_info.get('created_at', '-')[:10] if auth_info.get('created_at') else '-'}")
-                        st.write(f"**最后登录:** {auth_info.get('last_sign_in_at', '-')[:10] if auth_info.get('last_sign_in_at') else '-'}")
+                        auth_info = auth_users.get(selected_user.get("id"), {})
+                        st.write(f"**注册时间:** {auth_info.get('created_at', '-')[:10]}")
+                        st.write(f"**最后登录:** {auth_info.get('last_sign_in_at', '-')[:10]}")
                         st.write(f"**邮箱确认:** {'是' if auth_info.get('email_confirmed_at') else '否'}")
                 
+                # 订阅管理表单
                 col_sub1, col_sub2 = st.columns(2)
                 with col_sub1:
                     current_tier = selected_user.get("subscription_tier", "free")
@@ -696,6 +691,7 @@ def render_admin_panel():
                                                   value=selected_user.get("free_trials_remaining", 30),
                                                   key="admin_new_trials")
                 
+                # 设置到期时间（专业版专用）
                 expires_at = None
                 months = 1
                 if new_tier == "pro":
@@ -721,6 +717,7 @@ def render_admin_panel():
                         else:
                             st.error(f"更新失败: {patch_resp.text}")
                 
+                # 重置密码按钮
                 with col_btn2:
                     if st.button("📧 发送密码重置邮件", use_container_width=True, key="admin_reset_pwd"):
                         try:
@@ -743,16 +740,23 @@ def render_admin_panel():
         st.markdown("---")
         st.subheader(t()["batch_ops"])
         
-        if st.button(t()["reset_all_trials"], use_container_width=True, key="admin_reset_all"):
-            users_resp = supabase_get("profiles")
-            if users_resp.status_code == 200:
-                for user in users_resp.json():
-                    if user.get("subscription_tier") == "free":
-                        supabase_patch("profiles", user.get("id"), {"free_trials_remaining": 30})
-                st.success("所有免费用户次数已重置为 30 次")
-                st.rerun()
-            else:
-                st.error("重置失败")
+        col_batch1, col_batch2 = st.columns(2)
+        with col_batch1:
+            if st.button(t()["reset_all_trials"], use_container_width=True, key="admin_reset_all"):
+                users_resp = supabase_get("profiles")
+                if users_resp.status_code == 200:
+                    for user in users_resp.json():
+                        if user.get("subscription_tier") == "free":
+                            supabase_patch("profiles", user.get("id"), {"free_trials_remaining": 30})
+                    st.success("所有免费用户次数已重置为 30 次")
+                    st.rerun()
+                else:
+                    st.error("重置失败")
+        
+        with col_batch2:
+            if st.button("📧 发送提醒邮件给所有用户", use_container_width=True, key="admin_email_all"):
+                st.info("此功能需要配置 SMTP 邮件服务器")
+                st.warning("暂未实现，需要单独配置")
         
     except Exception as e:
         st.warning(f"无法获取数据: {e}")
