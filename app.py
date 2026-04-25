@@ -32,7 +32,6 @@ HEADERS = {
 }
 
 def supabase_get(table: str, user_id: str = None, id_field: str = "id"):
-    """GET 请求"""
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     if user_id:
         url += f"?{id_field}=eq.{user_id}"
@@ -40,7 +39,6 @@ def supabase_get(table: str, user_id: str = None, id_field: str = "id"):
     return response
 
 def supabase_patch(table: str, user_id: str, data: dict):
-    """PATCH 请求（更新）"""
     url = f"{SUPABASE_URL}/rest/v1/{table}?id=eq.{user_id}"
     response = requests.patch(url, headers=HEADERS, json=data)
     return response
@@ -234,22 +232,15 @@ def get_user_total_usage(user_id: str):
     return 0
 
 def create_checkout_session(user_id: str, user_email: str, price_id: str):
-    """创建 Stripe Checkout Session"""
     try:
         session = stripe.checkout.Session.create(
             customer_email=user_email,
             payment_method_types=['card'],
-            line_items=[{
-                'price': price_id,
-                'quantity': 1,
-            }],
+            line_items=[{'price': price_id, 'quantity': 1}],
             mode='subscription',
             success_url="https://techlife-app.streamlit.app",
             cancel_url="https://techlife-app.streamlit.app",
-            metadata={
-                'user_id': user_id,
-                'price_id': price_id
-            }
+            metadata={'user_id': user_id, 'price_id': price_id}
         )
         return session.url, None
     except Exception as e:
@@ -290,36 +281,35 @@ def render_sidebar():
                 st.session_state.admin_mode = False
                 st.rerun()
             
-            # 侧边栏升级按钮（免费用户，折叠式）
+            # 侧边栏升级按钮（不折叠）
             if tier == "free":
-                with st.expander("💎 升级到专业版", expanded=False):
-                    st.markdown("**专业版功能：**")
-                    st.markdown("- ✅ 无限次使用所有应用")
-                    st.markdown("- ✅ 优先技术支持")
-                    st.markdown("- ✅ 导出完整报告")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("月付 $29/月", key="sidebar_monthly_btn", use_container_width=True):
-                            url, error = create_checkout_session(
-                                user_id=st.session_state.user_id,
-                                user_email=st.session_state.user_email,
-                                price_id=st.secrets["STRIPE_PRICE_MONTHLY"]
-                            )
-                            if url:
-                                st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                            else:
-                                st.error(f"创建支付会话失败: {error}")
-                    with col2:
-                        if st.button("年付 $299/年", key="sidebar_yearly_btn", use_container_width=True):
-                            url, error = create_checkout_session(
-                                user_id=st.session_state.user_id,
-                                user_email=st.session_state.user_email,
-                                price_id=st.secrets["STRIPE_PRICE_YEARLY"]
-                            )
-                            if url:
-                                st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                            else:
-                                st.error(f"创建支付会话失败: {error}")
+                st.markdown("---")
+                st.markdown("### 💎 升级到专业版")
+                st.markdown("**专业版功能：**")
+                st.markdown("- ✅ 无限次使用所有应用")
+                st.markdown("- ✅ 优先技术支持")
+                st.markdown("- ✅ 导出完整报告")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("月付 $29/月", key="sidebar_monthly_btn", use_container_width=True):
+                        url, error = create_checkout_session(
+                            st.session_state.user_id, st.session_state.user_email,
+                            st.secrets["STRIPE_PRICE_MONTHLY"]
+                        )
+                        if url:
+                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
+                        else:
+                            st.error(f"创建支付会话失败: {error}")
+                with col2:
+                    if st.button("年付 $299/年", key="sidebar_yearly_btn", use_container_width=True):
+                        url, error = create_checkout_session(
+                            st.session_state.user_id, st.session_state.user_email,
+                            st.secrets["STRIPE_PRICE_YEARLY"]
+                        )
+                        if url:
+                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
+                        else:
+                            st.error(f"创建支付会话失败: {error}")
 
 def render_top_buttons():
     col1, col2, col3, col4, col5 = st.columns([8, 1.2, 1.2, 1.2, 1])
@@ -346,7 +336,6 @@ def render_admin_login_form():
             username = st.text_input(t()["admin_username"], key="admin_username")
             password = st.text_input(t()["admin_password"], type="password", key="admin_password")
             submitted = st.form_submit_button(t()["admin_login_btn"], type="primary", use_container_width=True)
-            
             if submitted:
                 if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
                     st.session_state.admin_mode = True
@@ -357,7 +346,6 @@ def render_admin_login_form():
                     st.rerun()
                 else:
                     st.error(t()["admin_error"])
-        
         if st.button(t()["admin_back"], use_container_width=True):
             st.session_state.show_admin_login = False
             st.rerun()
@@ -367,38 +355,25 @@ def render_login_form():
     with col2:
         st.markdown(f"<h1 style='text-align: center;'>{t()['main_title']}</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='text-align: center; color: gray;'>{t()['main_subtitle']}</p>", unsafe_allow_html=True)
-        
         with st.form("login_form", border=True):
             email = st.text_input(t()["email_placeholder"], key="login_email")
             password = st.text_input(t()["password_placeholder"], type="password", key="login_password")
             submitted = st.form_submit_button(t()["login_btn"], type="primary", use_container_width=True)
-            
-            if submitted:
-                if email and password:
-                    try:
-                        auth_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
-                        auth_headers = {
-                            "apikey": SUPABASE_KEY,
-                            "Content-Type": "application/json"
-                        }
-                        auth_data = {"email": email, "password": password}
-                        response = requests.post(auth_url, headers=auth_headers, json=auth_data)
-                        
-                        if response.status_code == 200:
-                            data = response.json()
-                            user_id = data.get("user", {}).get("id")
-                            
-                            st.session_state.authenticated = True
-                            st.session_state.user_id = user_id
-                            st.session_state.user_email = email
-                            st.rerun()
-                        else:
-                            st.error(f"登录失败: {response.json().get('msg', '未知错误')}")
-                    except Exception as e:
-                        st.error(f"登录失败: {e}")
-                else:
-                    st.warning("请输入邮箱和密码")
-        
+            if submitted and email and password:
+                try:
+                    auth_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
+                    auth_headers = {"apikey": SUPABASE_KEY, "Content-Type": "application/json"}
+                    response = requests.post(auth_url, headers=auth_headers, json={"email": email, "password": password})
+                    if response.status_code == 200:
+                        data = response.json()
+                        st.session_state.authenticated = True
+                        st.session_state.user_id = data.get("user", {}).get("id")
+                        st.session_state.user_email = email
+                        st.rerun()
+                    else:
+                        st.error(f"登录失败: {response.json().get('msg', '未知错误')}")
+                except Exception as e:
+                    st.error(f"登录失败: {e}")
         col_reg, col_forgot = st.columns(2)
         with col_reg:
             if st.button(t()["register_btn"], use_container_width=True):
@@ -418,7 +393,6 @@ def render_register_form():
             password = st.text_input(t()["password_placeholder"], type="password", key="reg_password")
             confirm = st.text_input(t()["confirm_password"], type="password", key="reg_confirm")
             submitted = st.form_submit_button(t()["register_submit"], type="primary", use_container_width=True)
-            
             if submitted:
                 if not email or not password:
                     st.warning("请填写邮箱和密码")
@@ -429,12 +403,8 @@ def render_register_form():
                 else:
                     try:
                         auth_url = f"{SUPABASE_URL}/auth/v1/signup"
-                        auth_headers = {
-                            "apikey": SUPABASE_KEY,
-                            "Content-Type": "application/json"
-                        }
-                        auth_data = {"email": email, "password": password}
-                        response = requests.post(auth_url, headers=auth_headers, json=auth_data)
+                        auth_headers = {"apikey": SUPABASE_KEY, "Content-Type": "application/json"}
+                        response = requests.post(auth_url, headers=auth_headers, json={"email": email, "password": password})
                         if response.status_code == 200:
                             st.success(t()["register_success"])
                             st.session_state.show_register = False
@@ -447,7 +417,6 @@ def render_register_form():
                                 st.error(f"注册失败: {error_msg}")
                     except Exception as e:
                         st.error(f"注册失败: {e}")
-        
         if st.button(t()["back_to_login"], use_container_width=True):
             st.session_state.show_register = False
             st.rerun()
@@ -474,44 +443,50 @@ def render_main_app():
         st.markdown(f"<h3 style='text-align: center;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
         st.markdown("---")
         
-        # 三个指标卡片（升级按钮放在第三个卡片右侧）
-        col_sub1, col_sub2, col_sub3 = st.columns([1, 1, 1.5])
+        # 三个指标卡片（等宽）
+        col_sub1, col_sub2, col_sub3 = st.columns(3)
         with col_sub1:
-            st.metric(t()["subscription"], "💎 Pro" if tier == "pro" else "🔒 Free")
+            st.metric(t()["subscription"], "💎 Pro" if tier == "pro" else "🔒 Free", border=True)
         with col_sub2:
             if tier == "free":
-                st.metric(t()["free_trial"], remaining)
+                st.metric(t()["free_trial"], remaining, border=True)
             else:
-                st.metric(t()["free_trial"], "∞")
+                st.metric(t()["free_trial"], "∞", border=True)
                 expires_at = profile.get("subscription_expires_at")
                 if expires_at:
                     st.caption(f"📅 {t()['expires_at']}: {expires_at[:10]}")
         with col_sub3:
-            if tier == "free":
-                col_usage, col_refresh, col_upgrade = st.columns([2, 1, 2.5])
-                with col_usage:
-                    st.metric(t()["total_usage"], total_usage)
-                with col_refresh:
-                    if st.button("🔄", key="refresh_btn", help="刷新数据"):
-                        st.rerun()
-                with col_upgrade:
-                    if st.button(t()["monthly"], key="main_upgrade_btn", use_container_width=True):
-                        url, error = create_checkout_session(
-                            user_id=st.session_state.user_id,
-                            user_email=st.session_state.user_email,
-                            price_id=st.secrets["STRIPE_PRICE_MONTHLY"]
-                        )
-                        if url:
-                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                        else:
-                            st.error(f"创建支付会话失败: {error}")
-            else:
-                col_usage, col_refresh = st.columns([3, 1])
-                with col_usage:
-                    st.metric(t()["total_usage"], total_usage)
-                with col_refresh:
-                    if st.button("🔄", key="refresh_btn_pro", help="刷新数据"):
-                        st.rerun()
+            st.metric(t()["total_usage"], total_usage, border=True)
+        
+        # 刷新和支付按钮行
+        st.markdown("---")
+        col_actions = st.columns([1, 1, 1, 1, 1, 1, 1, 1])
+        
+        with col_actions[0]:
+            if st.button("🔄 刷新", key="refresh_btn", use_container_width=True):
+                st.rerun()
+        
+        if tier == "free":
+            with col_actions[2]:
+                if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
+                    url, error = create_checkout_session(
+                        st.session_state.user_id, st.session_state.user_email,
+                        st.secrets["STRIPE_PRICE_MONTHLY"]
+                    )
+                    if url:
+                        st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
+                    else:
+                        st.error(f"创建支付会话失败: {error}")
+            with col_actions[3]:
+                if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True):
+                    url, error = create_checkout_session(
+                        st.session_state.user_id, st.session_state.user_email,
+                        st.secrets["STRIPE_PRICE_YEARLY"]
+                    )
+                    if url:
+                        st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
+                    else:
+                        st.error(f"创建支付会话失败: {error}")
         
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
@@ -521,35 +496,31 @@ def render_main_app():
             "📊 Product Feasibility": {
                 "desc": "产品可行性分析 - 挖掘市场与用户之声",
                 "desc_en": "Product Feasibility - Voice of Market & Users",
-                "key": "feasibility",
                 "url": APP_URLS["feasibility"]
             },
             "🔍 AI-DQA": {
                 "desc": "设计风险分析 - AI赋能DFMEA",
                 "desc_en": "Design Risk Analysis - AI-powered DFMEA",
-                "key": "dqa",
                 "url": APP_URLS["dqa"]
             },
             "📈 Para-Vary": {
                 "desc": "蒙特卡洛模拟 - 累积公差仿真",
                 "desc_en": "Monte Carlo Simulation - Tolerance Stack-up",
-                "key": "paravary",
                 "url": APP_URLS["paravary"]
             }
         }
         
-        for app_name, app_info in apps.items():
+        for name, info in apps.items():
             with st.container(border=True):
                 col_name, col_desc, col_btn = st.columns([2, 3, 1])
                 with col_name:
-                    st.markdown(f"**{app_name}**")
+                    st.markdown(f"**{name}**")
                 with col_desc:
-                    desc = app_info["desc"] if st.session_state.lang == "zh" else app_info["desc_en"]
+                    desc = info["desc"] if st.session_state.lang == "zh" else info["desc_en"]
                     st.caption(desc)
                 with col_btn:
                     lang_param = "zh" if st.session_state.lang == "zh" else "en"
-                    full_url = f"{app_info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}&lang={lang_param}&trials_left={remaining}"
-                    
+                    full_url = f"{info['url']}?user_id={st.session_state.user_id}&email={st.session_state.user_email}&lang={lang_param}&trials_left={remaining}"
                     button_html = f'''
                     <a href="{full_url}" target="_blank" style="
                         display: inline-block;
@@ -568,31 +539,16 @@ def render_main_app():
 
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
-    
     try:
         response = supabase_get("profiles")
-        if response.status_code == 200:
-            users = response.json()
-        else:
-            users = []
+        users = response.json() if response.status_code == 200 else []
         
         auth_users = {}
         try:
-            auth_url = f"{SUPABASE_URL}/auth/v1/admin/users"
-            auth_headers = {
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}"
-            }
-            auth_response = requests.get(auth_url, headers=auth_headers)
+            auth_response = requests.get(f"{SUPABASE_URL}/auth/v1/admin/users", headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"})
             if auth_response.status_code == 200:
                 data = auth_response.json()
-                if isinstance(data, dict) and "users" in data:
-                    user_list = data["users"]
-                elif isinstance(data, list):
-                    user_list = data
-                else:
-                    user_list = []
-                
+                user_list = data.get("users", []) if isinstance(data, dict) else data
                 for u in user_list:
                     auth_users[u.get("id")] = {
                         "created_at": u.get("created_at", ""),
@@ -603,21 +559,13 @@ def render_admin_panel():
             st.warning(f"获取用户详细信息失败: {e}")
         
         pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
-        confirmed_count = 0
-        for u in users:
-            auth_info = auth_users.get(u.get("id"), {})
-            if auth_info.get("email_confirmed_at"):
-                confirmed_count += 1
+        confirmed_count = sum(1 for u in users if auth_users.get(u.get("id"), {}).get("email_confirmed_at"))
         
         col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric(t()["total_users"], len(users))
-        with col2:
-            st.metric("已确认邮箱", confirmed_count)
-        with col3:
-            st.metric(t()["pro_users"], len(pro_users))
-        with col4:
-            st.metric(t()["free_users"], len(users) - len(pro_users))
+        with col1: st.metric(t()["total_users"], len(users))
+        with col2: st.metric("已确认邮箱", confirmed_count)
+        with col3: st.metric(t()["pro_users"], len(pro_users))
+        with col4: st.metric(t()["free_users"], len(users) - len(pro_users))
         
         st.markdown("---")
         st.subheader(t()["user_list"])
@@ -625,32 +573,16 @@ def render_admin_panel():
         if users:
             user_data = []
             for user in users:
-                auth_info = auth_users.get(user.get("id"), {})
-                
-                created_at = auth_info.get("created_at", "")
-                if created_at:
-                    created_at = created_at[:10]
-                else:
-                    created_at = "-"
-                
-                last_login = auth_info.get("last_sign_in_at", "")
-                if last_login:
-                    last_login = last_login[:10]
-                else:
-                    last_login = "-"
-                
-                email_confirmed = "✅" if auth_info.get("email_confirmed_at") else "❌"
-                
+                ai = auth_users.get(user.get("id"), {})
                 user_data.append({
                     t()["email_col"]: user.get("email"),
-                    "邮箱确认": email_confirmed,
+                    "邮箱确认": "✅" if ai.get("email_confirmed_at") else "❌",
                     t()["subscription_col"]: "💎 Pro" if user.get("subscription_tier") == "pro" else "🔒 Free",
                     "剩余次数": user.get("free_trials_remaining", 30),
-                    "注册时间": created_at,
-                    "最后登录": last_login,
+                    "注册时间": (ai.get("created_at", "-")[:10]) if ai.get("created_at") else "-",
+                    "最后登录": (ai.get("last_sign_in_at", "-")[:10]) if ai.get("last_sign_in_at") else "-",
                     "到期时间": user.get("subscription_expires_at", "-")[:10] if user.get("subscription_expires_at") else "-",
                 })
-            
             with st.container(height=400):
                 st.dataframe(user_data, use_container_width=True)
         else:
@@ -661,81 +593,47 @@ def render_admin_panel():
         
         if users:
             user_options = [f"{u.get('email')} ({u.get('subscription_tier')})" for u in users]
-            selected_user_display = st.selectbox(t()["select_user"], user_options, key="admin_select_user")
-            selected_email = selected_user_display.split(" ")[0] if selected_user_display else None
+            selected = st.selectbox(t()["select_user"], user_options, key="admin_select_user")
+            selected_email = selected.split(" ")[0]
             selected_user = next((u for u in users if u.get("email") == selected_email), None)
             
             if selected_user:
-                with st.expander("用户详细信息", expanded=True):
-                    auth_info = auth_users.get(selected_user.get("id"), {})
-                    col_info1, col_info2 = st.columns(2)
-                    with col_info1:
-                        st.write(f"**邮箱:** {selected_user.get('email')}")
-                        st.write(f"**订阅:** {selected_user.get('subscription_tier')}")
-                        st.write(f"**剩余次数:** {selected_user.get('free_trials_remaining', 30)}")
-                    with col_info2:
-                        st.write(f"**注册时间:** {auth_info.get('created_at', '-')[:10] if auth_info.get('created_at') else '-'}")
-                        st.write(f"**最后登录:** {auth_info.get('last_sign_in_at', '-')[:10] if auth_info.get('last_sign_in_at') else '-'}")
-                        st.write(f"**邮箱确认:** {'是' if auth_info.get('email_confirmed_at') else '否'}")
-                
-                col_sub1, col_sub2 = st.columns(2)
-                with col_sub1:
-                    current_tier = selected_user.get("subscription_tier", "free")
+                col_s1, col_s2 = st.columns(2)
+                with col_s1:
                     new_tier = st.selectbox(t()["set_subscription"], ["free", "pro"], 
-                                            index=0 if current_tier == "free" else 1,
-                                            key="admin_new_tier")
-                with col_sub2:
+                                            index=0 if selected_user.get("subscription_tier") == "free" else 1, key="admin_new_tier")
+                with col_s2:
                     new_trials = st.number_input(t()["set_trials"], min_value=0, max_value=100, 
-                                                  value=selected_user.get("free_trials_remaining", 30),
-                                                  key="admin_new_trials")
+                                                  value=selected_user.get("free_trials_remaining", 30), key="admin_new_trials")
                 
-                expires_at = None
-                months = 1
-                if new_tier == "pro":
-                    months = st.number_input("月数", min_value=1, max_value=12, value=1, key="admin_months")
-                    expires_at = (datetime.now() + timedelta(days=30 * months)).isoformat()
-                
-                col_btn1, col_btn2 = st.columns(2)
-                with col_btn1:
+                col_b1, col_b2 = st.columns(2)
+                with col_b1:
                     if st.button(t()["update_btn"], use_container_width=True, key="admin_update_btn"):
-                        update_data = {
-                            "subscription_tier": new_tier,
-                            "free_trials_remaining": new_trials
-                        }
-                        if expires_at:
-                            update_data["subscription_expires_at"] = expires_at
+                        update_data = {"subscription_tier": new_tier, "free_trials_remaining": new_trials}
+                        if new_tier == "pro":
+                            months = st.number_input("月数", min_value=1, max_value=12, value=1, key="admin_months")
+                            update_data["subscription_expires_at"] = (datetime.now() + timedelta(days=30 * months)).isoformat()
                         else:
                             update_data["subscription_expires_at"] = None
-                        
                         patch_resp = supabase_patch("profiles", selected_user.get("id"), update_data)
                         if patch_resp.status_code in [200, 204]:
                             st.success(f"已更新 {selected_email}")
                             st.rerun()
                         else:
                             st.error(f"更新失败: {patch_resp.text}")
-                
-                with col_btn2:
+                with col_b2:
                     if st.button("📧 发送密码重置邮件", use_container_width=True, key="admin_reset_pwd"):
                         try:
-                            reset_url = f"{SUPABASE_URL}/auth/v1/recover"
-                            reset_headers = {
-                                "apikey": SUPABASE_KEY,
-                                "Authorization": f"Bearer {SUPABASE_KEY}",
-                                "Content-Type": "application/json"
-                            }
                             reset_data = {"email": selected_email}
-                            reset_response = requests.post(reset_url, headers=reset_headers, json=reset_data)
+                            reset_response = requests.post(f"{SUPABASE_URL}/auth/v1/recover", headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"}, json=reset_data)
                             if reset_response.status_code == 200:
                                 st.success(f"✅ 密码重置邮件已发送至 {selected_email}")
-                                st.info("用户点击邮件中的链接即可设置新密码")
                             else:
                                 st.error(f"发送失败: {reset_response.text}")
                         except Exception as e:
                             st.error(f"发送失败: {e}")
         
         st.markdown("---")
-        st.subheader(t()["batch_ops"])
-        
         if st.button(t()["reset_all_trials"], use_container_width=True, key="admin_reset_all"):
             users_resp = supabase_get("profiles")
             if users_resp.status_code == 200:
@@ -744,9 +642,7 @@ def render_admin_panel():
                         supabase_patch("profiles", user.get("id"), {"free_trials_remaining": 30})
                 st.success("所有免费用户次数已重置为 30 次")
                 st.rerun()
-            else:
-                st.error("重置失败")
-        
+                
     except Exception as e:
         st.warning(f"无法获取数据: {e}")
     
@@ -759,7 +655,6 @@ def render_admin_panel():
 def main():
     render_sidebar()
     render_top_buttons()
-    
     if st.session_state.get("show_admin_login", False):
         render_admin_login_form()
     elif not st.session_state.authenticated:
