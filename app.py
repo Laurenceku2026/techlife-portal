@@ -111,6 +111,7 @@ TEXTS = {
         "monthly": "月付 $29/月",
         "yearly": "年付 $299/年",
         "expires_at": "到期",
+        "upgrade_title": "升级到专业版",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -178,6 +179,7 @@ Let AI become your Chief Quality Engineer.
         "monthly": "Monthly $29/month",
         "yearly": "Yearly $299/year",
         "expires_at": "Expires",
+        "upgrade_title": "Upgrade to Pro",
     }
 }
 
@@ -281,35 +283,32 @@ def render_sidebar():
                 st.session_state.admin_mode = False
                 st.rerun()
             
-            # 侧边栏升级按钮（不折叠）
+            # 侧边栏升级按钮
             if tier == "free":
                 st.markdown("---")
-                st.markdown("### 💎 升级到专业版")
+                st.markdown(f"### 💎 {t()['upgrade_title']}")
                 st.markdown("**专业版功能：**")
                 st.markdown("- ✅ 无限次使用所有应用")
                 st.markdown("- ✅ 优先技术支持")
                 st.markdown("- ✅ 导出完整报告")
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("月付 $29/月", key="sidebar_monthly_btn", use_container_width=True):
-                        url, error = create_checkout_session(
-                            st.session_state.user_id, st.session_state.user_email,
-                            st.secrets["STRIPE_PRICE_MONTHLY"]
-                        )
-                        if url:
-                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                        else:
-                            st.error(f"创建支付会话失败: {error}")
-                with col2:
-                    if st.button("年付 $299/年", key="sidebar_yearly_btn", use_container_width=True):
-                        url, error = create_checkout_session(
-                            st.session_state.user_id, st.session_state.user_email,
-                            st.secrets["STRIPE_PRICE_YEARLY"]
-                        )
-                        if url:
-                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                        else:
-                            st.error(f"创建支付会话失败: {error}")
+                if st.button(t()["monthly"], key="sidebar_monthly_btn", use_container_width=True):
+                    url, error = create_checkout_session(
+                        st.session_state.user_id, st.session_state.user_email,
+                        st.secrets["STRIPE_PRICE_MONTHLY"]
+                    )
+                    if url:
+                        st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
+                    else:
+                        st.error(f"创建支付会话失败: {error}")
+                if st.button(t()["yearly"], key="sidebar_yearly_btn", use_container_width=True):
+                    url, error = create_checkout_session(
+                        st.session_state.user_id, st.session_state.user_email,
+                        st.secrets["STRIPE_PRICE_YEARLY"]
+                    )
+                    if url:
+                        st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
+                    else:
+                        st.error(f"创建支付会话失败: {error}")
 
 def render_top_buttons():
     col1, col2, col3, col4, col5 = st.columns([8, 1.2, 1.2, 1.2, 1])
@@ -443,11 +442,13 @@ def render_main_app():
         st.markdown(f"<h3 style='text-align: center;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
         st.markdown("---")
         
-        # 三个指标卡片（等宽）
-        col_sub1, col_sub2, col_sub3 = st.columns(3)
-        with col_sub1:
+        # 一行布局：订阅卡片 + 剩余次数卡片 + 总使用次数卡片 + 刷新按钮 + 升级区域
+        col_card1, col_card2, col_card3, col_refresh, col_upgrade = st.columns([1, 1, 1, 0.5, 1.2])
+        
+        with col_card1:
             st.metric(t()["subscription"], "💎 Pro" if tier == "pro" else "🔒 Free", border=True)
-        with col_sub2:
+        
+        with col_card2:
             if tier == "free":
                 st.metric(t()["free_trial"], remaining, border=True)
             else:
@@ -455,19 +456,19 @@ def render_main_app():
                 expires_at = profile.get("subscription_expires_at")
                 if expires_at:
                     st.caption(f"📅 {t()['expires_at']}: {expires_at[:10]}")
-        with col_sub3:
+        
+        with col_card3:
             st.metric(t()["total_usage"], total_usage, border=True)
         
-        # 刷新和支付按钮行
-        st.markdown("---")
-        col_actions = st.columns([1, 1, 1, 1, 1, 1, 1, 1])
-        
-        with col_actions[0]:
-            if st.button("🔄 刷新", key="refresh_btn", use_container_width=True):
+        with col_refresh:
+            st.write("")  # 垂直对齐
+            st.write("")
+            if st.button("🔄", key="refresh_btn", help="刷新数据", use_container_width=True):
                 st.rerun()
         
-        if tier == "free":
-            with col_actions[2]:
+        with col_upgrade:
+            if tier == "free":
+                st.markdown(f"**{t()['upgrade_title']}**")
                 if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
                     url, error = create_checkout_session(
                         st.session_state.user_id, st.session_state.user_email,
@@ -477,7 +478,6 @@ def render_main_app():
                         st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
                     else:
                         st.error(f"创建支付会话失败: {error}")
-            with col_actions[3]:
                 if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True):
                     url, error = create_checkout_session(
                         st.session_state.user_id, st.session_state.user_email,
@@ -487,6 +487,9 @@ def render_main_app():
                         st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
                     else:
                         st.error(f"创建支付会话失败: {error}")
+            else:
+                st.markdown(f"**{t()['upgrade_title']}**")
+                st.success("✅ 已是专业版")
         
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
