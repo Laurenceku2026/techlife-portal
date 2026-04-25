@@ -243,6 +243,7 @@ def get_user_total_usage(user_id: str):
 
 def create_checkout_session(user_id: str, user_email: str, price_id: str):
     try:
+        st.write(f"🔍 调试: 创建会话 - 用户: {user_id}, 价格ID: {price_id}")
         session = stripe.checkout.Session.create(
             customer_email=user_email,
             payment_method_types=['card'],
@@ -252,8 +253,10 @@ def create_checkout_session(user_id: str, user_email: str, price_id: str):
             cancel_url="https://techlife-app.streamlit.app",
             metadata={'user_id': user_id, 'price_id': price_id}
         )
+        st.write(f"🔍 调试: 会话创建成功, URL: {session.url}")
         return session.url, None
     except Exception as e:
+        st.error(f"❌ Stripe 错误: {e}")
         return None, str(e)
 
 # ==================== UI 组件 ====================
