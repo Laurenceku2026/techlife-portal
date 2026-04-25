@@ -116,8 +116,9 @@ TEXTS = {
         "feature_2": "- ✅ 优先技术支持",
         "feature_3": "- ✅ 导出完整报告",
         "monthly": "📅 月付 $29/月",
-        "yearly": "📅 年付 $299/年 (省 $49)",
+        "yearly": "📅 年付 $299/年",
         "upgrade_success": "✅ 升级成功！您是专业版用户了！",
+        "expires_at": "到期",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -188,8 +189,9 @@ Let AI become your Chief Quality Engineer.
         "feature_2": "- ✅ Priority support",
         "feature_3": "- ✅ Export full reports",
         "monthly": "📅 Monthly $29/month",
-        "yearly": "📅 Yearly $299/year (Save $49)",
+        "yearly": "📅 Yearly $299/year",
         "upgrade_success": "✅ Upgrade successful! You are now a Pro user!",
+        "expires_at": "Expires",
     }
 }
 
@@ -217,7 +219,7 @@ def t():
 # ==================== 辅助函数 ====================
 def get_user_profile(user_id: str):
     if not user_id or user_id == "admin":
-        return {"subscription_tier": "free", "free_trials_remaining": 30}
+        return {"subscription_tier": "free", "free_trials_remaining": 30, "subscription_expires_at": None}
     try:
         response = supabase_get("profiles", user_id)
         if response.status_code == 200 and response.json():
@@ -254,7 +256,7 @@ def create_checkout_session(user_id: str, user_email: str, price_id: str):
                 'quantity': 1,
             }],
             mode='subscription',
-            success_url="https://techlife-app.streamlit.app?session_id={CHECKOUT_SESSION_ID}",
+            success_url="https://techlife-app.streamlit.app",
             cancel_url="https://techlife-app.streamlit.app",
             metadata={
                 'user_id': user_id,
@@ -265,11 +267,8 @@ def create_checkout_session(user_id: str, user_email: str, price_id: str):
     except Exception as e:
         return None, str(e)
 
-def render_upgrade_section(tier: str, user_id: str, user_email: str):
+def render_upgrade_section():
     """渲染升级到专业版的界面"""
-    if tier == "pro":
-        return
-    
     st.markdown("---")
     st.markdown(f"### {t()['upgrade_title']}")
     st.markdown(t()["upgrade_features"])
@@ -281,8 +280,8 @@ def render_upgrade_section(tier: str, user_id: str, user_email: str):
     with col1:
         if st.button(t()["monthly"], key="monthly_btn", use_container_width=True):
             url, error = create_checkout_session(
-                user_id=user_id,
-                user_email=user_email,
+                user_id=st.session_state.user_id,
+                user_email=st.session_state.user_email,
                 price_id=st.secrets["STRIPE_PRICE_MONTHLY"]
             )
             if url:
@@ -293,8 +292,8 @@ def render_upgrade_section(tier: str, user_id: str, user_email: str):
     with col2:
         if st.button(t()["yearly"], key="yearly_btn", use_container_width=True):
             url, error = create_checkout_session(
-                user_id=user_id,
-                user_email=user_email,
+                user_id=st.session_state.user_id,
+                user_email=st.session_state.user_email,
                 price_id=st.secrets["STRIPE_PRICE_YEARLY"]
             )
             if url:
@@ -302,6 +301,7 @@ def render_upgrade_section(tier: str, user_id: str, user_email: str):
             else:
                 st.error(f"创建支付会话失败: {error}")
 
+# ==================== UI 组件 ====================
 def render_sidebar():
     with st.sidebar:
         st.title(t()["sidebar_title"])
@@ -327,7 +327,7 @@ def render_sidebar():
                 st.caption(f"🎫 {t()['free_trial']}: ∞")
                 expires_at = profile.get("subscription_expires_at")
                 if expires_at:
-                    st.caption(f"📅 到期: {expires_at[:10]}")
+                    st.caption(f"📅 {t()['expires_at']}: {expires_at[:10]}")
             
             if st.button(t()["logout"], use_container_width=True):
                 st.session_state.authenticated = False
@@ -336,8 +336,9 @@ def render_sidebar():
                 st.session_state.admin_mode = False
                 st.rerun()
             
-            # 升级按钮
-            render_upgrade_section(tier, st.session_state.user_id, st.session_state.user_email)
+            # 侧边栏升级按钮（免费用户显示）
+            if tier == "free":
+                render_upgrade_section()
 
 def render_top_buttons():
     col1, col2, col3, col4, col5 = st.columns([8, 1.2, 1.2, 1.2, 1])
@@ -501,14 +502,20 @@ def render_main_app():
                 st.metric(t()["free_trial"], remaining)
             else:
                 st.metric(t()["free_trial"], "∞")
+                expires_at = profile.get("subscription_expires_at")
+                if expires_at:
+                    st.caption(f"📅 {t()['expires_at']}: {expires_at[:10]}")
         with col_sub3:
-            # 总使用次数 + 刷新按钮放在同一卡片内
             col_usage, col_refresh = st.columns([3, 1])
             with col_usage:
                 st.metric(t()["total_usage"], total_usage)
             with col_refresh:
                 if st.button("🔄", key="refresh_btn", help="刷新数据"):
                     st.rerun()
+        
+        # 主页面升级按钮（免费用户显示）
+        if tier == "free":
+            render_upgrade_section()
         
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
@@ -585,7 +592,6 @@ def render_admin_panel():
             auth_response = requests.get(auth_url, headers=auth_headers)
             if auth_response.status_code == 200:
                 data = auth_response.json()
-                # 修复：响应可能是 {"users": [...]} 或直接是列表
                 if isinstance(data, dict) and "users" in data:
                     user_list = data["users"]
                 elif isinstance(data, list):
@@ -628,21 +634,18 @@ def render_admin_panel():
             for user in users:
                 auth_info = auth_users.get(user.get("id"), {})
                 
-                # 注册时间
                 created_at = auth_info.get("created_at", "")
                 if created_at:
                     created_at = created_at[:10]
                 else:
                     created_at = "-"
                 
-                # 最后登录时间
                 last_login = auth_info.get("last_sign_in_at", "")
                 if last_login:
                     last_login = last_login[:10]
                 else:
                     last_login = "-"
                 
-                # 邮箱确认状态
                 email_confirmed = "✅" if auth_info.get("email_confirmed_at") else "❌"
                 
                 user_data.append({
@@ -670,7 +673,6 @@ def render_admin_panel():
             selected_user = next((u for u in users if u.get("email") == selected_email), None)
             
             if selected_user:
-                # 显示选中用户的详细信息
                 with st.expander("用户详细信息", expanded=True):
                     auth_info = auth_users.get(selected_user.get("id"), {})
                     col_info1, col_info2 = st.columns(2)
@@ -683,7 +685,6 @@ def render_admin_panel():
                         st.write(f"**最后登录:** {auth_info.get('last_sign_in_at', '-')[:10] if auth_info.get('last_sign_in_at') else '-'}")
                         st.write(f"**邮箱确认:** {'是' if auth_info.get('email_confirmed_at') else '否'}")
                 
-                # 订阅管理表单
                 col_sub1, col_sub2 = st.columns(2)
                 with col_sub1:
                     current_tier = selected_user.get("subscription_tier", "free")
@@ -695,7 +696,6 @@ def render_admin_panel():
                                                   value=selected_user.get("free_trials_remaining", 30),
                                                   key="admin_new_trials")
                 
-                # 设置到期时间（专业版专用）
                 expires_at = None
                 months = 1
                 if new_tier == "pro":
@@ -721,7 +721,6 @@ def render_admin_panel():
                         else:
                             st.error(f"更新失败: {patch_resp.text}")
                 
-                # 重置密码按钮
                 with col_btn2:
                     if st.button("📧 发送密码重置邮件", use_container_width=True, key="admin_reset_pwd"):
                         try:
@@ -763,6 +762,7 @@ def render_admin_panel():
         st.session_state.admin_mode = False
         st.session_state.authenticated = False
         st.rerun()
+
 def main():
     render_sidebar()
     render_top_buttons()
