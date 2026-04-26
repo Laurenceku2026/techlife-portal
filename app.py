@@ -118,6 +118,9 @@ TEXTS = {
         "pro_feature_3": "- ✅ 导出完整报告",
         "payment_success": "✅ 支付成功！您已是专业版用户",
         "payment_pending": "支付未完成",
+        "go_to_payment": "💰 点击前往 Stripe 完成支付",
+        "payment_created": "✅ 支付会话已创建",
+        "refresh_tip": "支付完成后，请点击刷新按钮 🔄",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -192,6 +195,9 @@ Let AI become your Chief Quality Engineer.
         "pro_feature_3": "- ✅ Export full reports",
         "payment_success": "✅ Payment successful! You are now a Pro user!",
         "payment_pending": "Payment not completed",
+        "go_to_payment": "💰 Go to Stripe to complete payment",
+        "payment_created": "✅ Payment session created",
+        "refresh_tip": "After payment, please click the refresh button 🔄",
     }
 }
 
@@ -301,8 +307,9 @@ def render_sidebar():
                                 cancel_url="https://techlife-app.streamlit.app",
                                 metadata={'user_id': st.session_state.user_id}
                             )
-                            st.markdown(f'<script>window.open("{session.url}", "_blank");</script>', unsafe_allow_html=True)
-                            st.success("✅ 支付页面已在新窗口打开")
+                            st.success(t()["payment_created"])
+                            st.link_button(t()["go_to_payment"], session.url, use_container_width=True)
+                            st.info(t()["refresh_tip"])
                         except Exception as e:
                             st.error(f"创建支付会话失败: {e}")
                 if st.button(t()["yearly"], key="sidebar_yearly_btn", use_container_width=True, type="primary"):
@@ -317,8 +324,9 @@ def render_sidebar():
                                 cancel_url="https://techlife-app.streamlit.app",
                                 metadata={'user_id': st.session_state.user_id}
                             )
-                            st.markdown(f'<script>window.open("{session.url}", "_blank");</script>', unsafe_allow_html=True)
-                            st.success("✅ 支付页面已在新窗口打开")
+                            st.success(t()["payment_created"])
+                            st.link_button(t()["go_to_payment"], session.url, use_container_width=True)
+                            st.info(t()["refresh_tip"])
                         except Exception as e:
                             st.error(f"创建支付会话失败: {e}")
 
@@ -517,8 +525,9 @@ def render_main_app():
                                 cancel_url="https://techlife-app.streamlit.app",
                                 metadata={'user_id': st.session_state.user_id}
                             )
-                            st.markdown(f'<script>window.open("{session.url}", "_blank");</script>', unsafe_allow_html=True)
-                            st.success("✅ 支付页面已在新窗口打开，请完成支付")
+                            st.success(t()["payment_created"])
+                            st.link_button(t()["go_to_payment"], session.url, use_container_width=True)
+                            st.info(t()["refresh_tip"])
                         except Exception as e:
                             st.error(f"创建支付会话失败: {e}")
                 
@@ -534,8 +543,9 @@ def render_main_app():
                                 cancel_url="https://techlife-app.streamlit.app",
                                 metadata={'user_id': st.session_state.user_id}
                             )
-                            st.markdown(f'<script>window.open("{session.url}", "_blank");</script>', unsafe_allow_html=True)
-                            st.success("✅ 支付页面已在新窗口打开，请完成支付")
+                            st.success(t()["payment_created"])
+                            st.link_button(t()["go_to_payment"], session.url, use_container_width=True)
+                            st.info(t()["refresh_tip"])
                         except Exception as e:
                             st.error(f"创建支付会话失败: {e}")
             else:
