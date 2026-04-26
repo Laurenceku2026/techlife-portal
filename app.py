@@ -76,6 +76,7 @@ TEXTS = {
         "logout": "登出",
         "free_trial": "剩余免费次数",
         "subscription": "订阅",
+        "subscription_plan_label": "付费方式",
         "total_usage": "总使用次数",
         "nav_title": "应用导航",
         "admin_panel": "管理员面板",
@@ -116,8 +117,9 @@ TEXTS = {
         "pro_feature_1": "- ✅ 无限次使用所有应用",
         "pro_feature_2": "- ✅ 优先技术支持",
         "pro_feature_3": "- ✅ 导出完整报告",
-        "pro_monthly": "月付版",
-        "pro_yearly": "年付版",
+        "pro_monthly": "月付",
+        "pro_yearly": "年付",
+        "payment_method": "付费方式",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -150,6 +152,7 @@ Let AI become your Chief Quality Engineer.
         "logout": "Logout",
         "free_trial": "Remaining Trials",
         "subscription": "Subscription",
+        "subscription_plan_label": "Plan",
         "total_usage": "Total Usage",
         "nav_title": "App Navigation",
         "admin_panel": "Admin Panel",
@@ -190,8 +193,9 @@ Let AI become your Chief Quality Engineer.
         "pro_feature_1": "- ✅ Unlimited access to all apps",
         "pro_feature_2": "- ✅ Priority support",
         "pro_feature_3": "- ✅ Export full reports",
-        "pro_monthly": "Monthly Plan",
-        "pro_yearly": "Yearly Plan",
+        "pro_monthly": "Monthly",
+        "pro_yearly": "Yearly",
+        "payment_method": "Payment",
     }
 }
 
@@ -271,13 +275,11 @@ def render_sidebar():
                 st.caption(f"🎫 {t()['free_trial']}: {remaining}")
                 st.caption(f"📊 {t()['total_usage']}: {total_usage}")
             else:
+                st.caption(f"📋 {t()['subscription']}: 💎 Pro")
                 if plan == "monthly":
-                    st.caption(f"📋 {t()['subscription']}: 💎 Pro ({t()['pro_monthly']})")
+                    st.caption(f"💳 {t()['payment_method']}: {t()['pro_monthly']}")
                 elif plan == "yearly":
-                    st.caption(f"📋 {t()['subscription']}: 💎 Pro ({t()['pro_yearly']})")
-                else:
-                    st.caption(f"📋 {t()['subscription']}: 💎 Pro")
-                st.caption(f"🎫 {t()['free_trial']}: ∞")
+                    st.caption(f"💳 {t()['payment_method']}: {t()['pro_yearly']}")
                 st.caption(f"📊 {t()['total_usage']}: {total_usage}")
             
             if st.button(t()["logout"], use_container_width=True):
@@ -481,18 +483,18 @@ def render_main_app():
             if tier == "free":
                 st.metric(t()["subscription"], "🔒 Free", border=True)
             else:
-                if plan == "monthly":
-                    st.metric(t()["subscription"], f"💎 Pro ({t()['pro_monthly']})", border=True)
-                elif plan == "yearly":
-                    st.metric(t()["subscription"], f"💎 Pro ({t()['pro_yearly']})", border=True)
-                else:
-                    st.metric(t()["subscription"], "💎 Pro", border=True)
+                st.metric(t()["subscription"], "💎 Pro", border=True)
         
         with col_card2:
             if tier == "free":
                 st.metric(t()["free_trial"], remaining, border=True)
             else:
-                st.metric(t()["free_trial"], "∞", border=True)
+                if plan == "monthly":
+                    st.metric(t()["subscription_plan_label"], t()["pro_monthly"], border=True)
+                elif plan == "yearly":
+                    st.metric(t()["subscription_plan_label"], t()["pro_yearly"], border=True)
+                else:
+                    st.metric(t()["free_trial"], "∞", border=True)
         
         with col_card3:
             st.metric(t()["total_usage"], total_usage, border=True)
