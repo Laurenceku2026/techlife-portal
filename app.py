@@ -366,7 +366,12 @@ def render_sidebar():
                 
                 # 显示支付链接（自定义红底白字按钮）
                 if "payment_url" in st.session_state and st.session_state.payment_url:
-                    st.success(f"✅ {st.session_state.payment_type} {t()['payment_created']}")
+                    # 将 payment_type 转换为显示文本
+                    if st.session_state.payment_type == "monthly":
+                        payment_display = "月付" if st.session_state.lang == "zh" else "Monthly"
+                    else:
+                        payment_display = "年付" if st.session_state.lang == "zh" else "Yearly"
+                    st.success(f"✅ {payment_display} {t()['payment_created']}")
                     # 仅此按钮使用红底白字样式
                     button_html = f'''
                     <a href="{st.session_state.payment_url}" target="_blank" style="
@@ -590,7 +595,12 @@ def render_main_app():
                 
                 # 显示支付链接（自定义红底白字按钮）
                 if "payment_url" in st.session_state and st.session_state.payment_url:
-                    st.success(f"✅ {st.session_state.payment_type} {t()['payment_created']}")
+                    # 将 payment_type 转换为显示文本
+                    if st.session_state.payment_type == "monthly":
+                        payment_display = "月付" if st.session_state.lang == "zh" else "Monthly"
+                    else:
+                        payment_display = "年付" if st.session_state.lang == "zh" else "Yearly"
+                    st.success(f"✅ {payment_display} {t()['payment_created']}")
                     # 仅此按钮使用红底白字样式
                     button_html = f'''
                     <a href="{st.session_state.payment_url}" target="_blank" style="
