@@ -453,43 +453,45 @@ def render_reset_password_form():
             st.rerun()
 
 def render_main_app():
-    # 处理 Stripe 支付成功回调并自动恢复登录
+    # ============================================
+    # 1. 优先处理 Stripe 支付成功回调（用户跳转回来时）
+    # ============================================
     query_params = st.query_params
     
     if "session_id" in query_params:
         session_id = query_params["session_id"]
         user_id_from_url = query_params.get("user_id", None)
         
-        # 如果 URL 中有 user_id 且未登录，自动恢复登录状态
+        # 自动恢复登录状态
         if user_id_from_url and not st.session_state.authenticated:
             try:
-                # 从数据库获取用户信息
-                response = supabase_get("profiles", user_id_from_url)
-                if response.status_code == 200 and response.json():
-                    user_data = response.json()[0]
+                profile = get_user_profile(user_id_from_url)
+                if profile and profile.get("email"):
                     st.session_state.authenticated = True
                     st.session_state.user_id = user_id_from_url
-                    st.session_state.user_email = user_data.get("email", "")
-                    st.info("正在恢复登录状态...")
+                    st.session_state.user_email = profile.get("email")
             except Exception as e:
-                st.error(f"恢复登录失败: {e}")
+                st.error(f"自动登录失败: {e}")
         
-        # 处理支付验证
-        try:
-            session = stripe.checkout.Session.retrieve(session_id)
-            if session.payment_status == "paid":
-                user_id = session.metadata.get("user_id")
-                supabase_patch("profiles", user_id, {"subscription_tier": "pro"})
-                st.success(t()["payment_success"])
-                st.balloons()
-                # 清除 URL 参数
-                st.query_params.clear()
-                st.rerun()
-            else:
-                st.warning(t()["payment_pending"])
-        except Exception as e:
-            st.error(f"验证失败: {e}")
+        # 验证支付并更新数据库
+        if st.session_state.authenticated:
+            try:
+                session = stripe.checkout.Session.retrieve(session_id)
+                if session.payment_status == "paid":
+                    user_id = session.metadata.get("user_id")
+                    supabase_patch("profiles", user_id, {"subscription_tier": "pro"})
+                    st.success(t()["payment_success"])
+                    st.balloons()
+                    st.query_params.clear()
+                    st.rerun()
+                else:
+                    st.warning(t()["payment_pending"])
+            except Exception as e:
+                st.error(f"验证失败: {e}")
     
+    # ============================================
+    # 2. 正常页面显示
+    # ============================================
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         profile = get_user_profile(st.session_state.user_id)
@@ -497,7 +499,7 @@ def render_main_app():
         remaining = profile.get("free_trials_remaining", 30)
         total_usage = get_user_total_usage(st.session_state.user_id)
         
-        # 第一行：欢迎语 + 刷新按钮
+        # 欢迎语 + 刷新按钮
         col_welcome, col_refresh = st.columns([6, 1])
         with col_welcome:
             st.markdown(f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
@@ -509,7 +511,7 @@ def render_main_app():
         
         st.markdown("---")
         
-        # 第二行：四个卡片
+        # 四个卡片
         col_card1, col_card2, col_card3, col_upgrade = st.columns([1, 1, 1, 1.2])
         
         with col_card1:
@@ -533,37 +535,27 @@ def render_main_app():
                 
                 # 月付按钮
                 if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
-                    with st.spinner("正在创建支付会话..."):
+                    with st.spinner("正在跳转到 Stripe 支付页面..."):
                         url, error = create_checkout_session(
                             st.session_state.user_id, st.session_state.user_email,
                             st.secrets["STRIPE_PRICE_MONTHLY"]
                         )
                         if url:
-                            st.session_state.payment_url = url
-                            st.session_state.payment_type = "monthly"
-                            st.rerun()
+                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
                         else:
                             st.error(f"创建支付会话失败: {error}")
                 
                 # 年付按钮
                 if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True):
-                    with st.spinner("正在创建支付会话..."):
+                    with st.spinner("正在跳转到 Stripe 支付页面..."):
                         url, error = create_checkout_session(
                             st.session_state.user_id, st.session_state.user_email,
                             st.secrets["STRIPE_PRICE_YEARLY"]
                         )
                         if url:
-                            st.session_state.payment_url = url
-                            st.session_state.payment_type = "yearly"
-                            st.rerun()
+                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
                         else:
                             st.error(f"创建支付会话失败: {error}")
-                
-                # 显示支付链接
-                if "payment_url" in st.session_state and st.session_state.payment_url:
-                    st.success(f"✅ {st.session_state.payment_type} {t()['payment_created']}")
-                    st.link_button(t()["go_to_payment"], st.session_state.payment_url, use_container_width=True)
-                    st.info(t()["refresh_tip"])
             else:
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
                 st.success("✅ 已是专业版", icon="🎉")
