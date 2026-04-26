@@ -540,31 +540,41 @@ def render_main_app():
         with col_card3:
             st.metric(t()["total_usage"], total_usage, border=True)
         
-        with col_upgrade:
+                with col_upgrade:
             if tier == "free":
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
                 
+                # 月付按钮 - 直接调用测试成功的逻辑
                 if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
-                    with st.spinner("正在跳转到 Stripe 支付页面..."):
-                        url, error = create_checkout_session(
-                            st.session_state.user_id, st.session_state.user_email,
-                            st.secrets["STRIPE_PRICE_MONTHLY"]
+                    try:
+                        session = stripe.checkout.Session.create(
+                            customer_email=st.session_state.user_email,
+                            payment_method_types=['card'],
+                            line_items=[{'price': st.secrets["STRIPE_PRICE_MONTHLY"], 'quantity': 1}],
+                            mode='subscription',
+                            success_url="https://techlife-app.streamlit.app?session_id={CHECKOUT_SESSION_ID}",
+                            cancel_url="https://techlife-app.streamlit.app",
+                            metadata={'user_id': st.session_state.user_id}
                         )
-                        if url:
-                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                        else:
-                            st.error(f"创建支付会话失败: {error}")
+                        st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
+                    except Exception as e:
+                        st.error(f"创建支付会话失败: {e}")
                 
+                # 年付按钮
                 if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True):
-                    with st.spinner("正在跳转到 Stripe 支付页面..."):
-                        url, error = create_checkout_session(
-                            st.session_state.user_id, st.session_state.user_email,
-                            st.secrets["STRIPE_PRICE_YEARLY"]
+                    try:
+                        session = stripe.checkout.Session.create(
+                            customer_email=st.session_state.user_email,
+                            payment_method_types=['card'],
+                            line_items=[{'price': st.secrets["STRIPE_PRICE_YEARLY"], 'quantity': 1}],
+                            mode='subscription',
+                            success_url="https://techlife-app.streamlit.app?session_id={CHECKOUT_SESSION_ID}",
+                            cancel_url="https://techlife-app.streamlit.app",
+                            metadata={'user_id': st.session_state.user_id}
                         )
-                        if url:
-                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                        else:
-                            st.error(f"创建支付会话失败: {error}")
+                        st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
+                    except Exception as e:
+                        st.error(f"创建支付会话失败: {e}")
             else:
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
                 st.success("✅ 已是专业版", icon="🎉")
