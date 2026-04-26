@@ -364,10 +364,30 @@ def render_sidebar():
                             error_text = "创建支付会话失败" if st.session_state.lang == "zh" else "Failed to create payment session"
                             st.error(f"{error_text}: {error}")
                 
-                # 显示支付链接（与主页面一致）
+                # 显示支付链接（自定义红底白字按钮）
                 if "payment_url" in st.session_state and st.session_state.payment_url:
                     st.success(f"✅ {st.session_state.payment_type} {t()['payment_created']}")
-                    st.link_button(t()["go_to_payment"], st.session_state.payment_url, use_container_width=True)
+                    # 仅此按钮使用红底白字样式
+                    button_html = f'''
+                    <a href="{st.session_state.payment_url}" target="_blank" style="
+                        display: block;
+                        width: 100%;
+                        padding: 0.5rem 0.75rem;
+                        background-color: #ff4b4b;
+                        color: white;
+                        text-align: center;
+                        text-decoration: none;
+                        border-radius: 0.5rem;
+                        font-weight: 500;
+                        margin: 0.5rem 0;
+                        border: none;
+                        cursor: pointer;
+                        transition: background-color 0.2s;
+                    " onmouseover="this.style.backgroundColor='#e04343'" onmouseout="this.style.backgroundColor='#ff4b4b'">
+                        {t()["go_to_payment"]}
+                    </a>
+                    '''
+                    st.markdown(button_html, unsafe_allow_html=True)
                     st.info(t()["refresh_tip"])
 
 def render_top_buttons():
@@ -538,7 +558,8 @@ def render_main_app():
                 
                 # 月付按钮
                 if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
-                    with st.spinner("正在创建支付会话..."):
+                    spinner_text = "正在创建支付会话..." if st.session_state.lang == "zh" else "Creating payment session..."
+                    with st.spinner(spinner_text):
                         url, error = create_checkout_session(
                             st.session_state.user_id, st.session_state.user_email,
                             st.secrets["STRIPE_PRICE_MONTHLY"]
@@ -548,11 +569,13 @@ def render_main_app():
                             st.session_state.payment_type = "monthly"
                             st.rerun()
                         else:
-                            st.error(f"创建支付会话失败: {error}")
+                            error_text = "创建支付会话失败" if st.session_state.lang == "zh" else "Failed to create payment session"
+                            st.error(f"{error_text}: {error}")
                 
                 # 年付按钮
                 if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True):
-                    with st.spinner("正在创建支付会话..."):
+                    spinner_text = "正在创建支付会话..." if st.session_state.lang == "zh" else "Creating payment session..."
+                    with st.spinner(spinner_text):
                         url, error = create_checkout_session(
                             st.session_state.user_id, st.session_state.user_email,
                             st.secrets["STRIPE_PRICE_YEARLY"]
@@ -562,12 +585,33 @@ def render_main_app():
                             st.session_state.payment_type = "yearly"
                             st.rerun()
                         else:
-                            st.error(f"创建支付会话失败: {error}")
+                            error_text = "创建支付会话失败" if st.session_state.lang == "zh" else "Failed to create payment session"
+                            st.error(f"{error_text}: {error}")
                 
-                # 显示支付链接
+                # 显示支付链接（自定义红底白字按钮）
                 if "payment_url" in st.session_state and st.session_state.payment_url:
                     st.success(f"✅ {st.session_state.payment_type} {t()['payment_created']}")
-                    st.link_button(t()["go_to_payment"], st.session_state.payment_url, use_container_width=True)
+                    # 仅此按钮使用红底白字样式
+                    button_html = f'''
+                    <a href="{st.session_state.payment_url}" target="_blank" style="
+                        display: block;
+                        width: 100%;
+                        padding: 0.5rem 0.75rem;
+                        background-color: #ff4b4b;
+                        color: white;
+                        text-align: center;
+                        text-decoration: none;
+                        border-radius: 0.5rem;
+                        font-weight: 500;
+                        margin: 0.5rem 0;
+                        border: none;
+                        cursor: pointer;
+                        transition: background-color 0.2s;
+                    " onmouseover="this.style.backgroundColor='#e04343'" onmouseout="this.style.backgroundColor='#ff4b4b'">
+                        {t()["go_to_payment"]}
+                    </a>
+                    '''
+                    st.markdown(button_html, unsafe_allow_html=True)
                     st.info(t()["refresh_tip"])
             else:
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
