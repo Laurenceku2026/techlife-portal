@@ -732,4 +732,28 @@ def render_admin_panel():
         st.warning(f"无法获取数据: {e}")
     
     st.markdown("---")
-    if
+    if st.button(t()["exit_admin"], use_container_width=True, key="admin_exit"):
+        st.session_state.admin_mode = False
+        st.session_state.authenticated = False
+        st.rerun()
+
+def main():
+    render_sidebar()
+    render_top_buttons()
+    if st.session_state.get("show_admin_login", False):
+        render_admin_login_form()
+    elif not st.session_state.authenticated:
+        if st.session_state.get("show_register", False):
+            render_register_form()
+        elif st.session_state.get("reset_password", False):
+            render_reset_password_form()
+        else:
+            render_login_form()
+    else:
+        if st.session_state.get("admin_mode", False):
+            render_admin_panel()
+        else:
+            render_main_app()
+
+if __name__ == "__main__":
+    main()
