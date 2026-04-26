@@ -459,6 +459,7 @@ def render_main_app():
     
     st.markdown(f"""
     <style>
+    /* 卡片文字对齐 */
     div[data-testid="stMetric"] {{
         text-align: {text_align} !important;
         justify-content: {text_align} !important;
@@ -474,6 +475,7 @@ def render_main_app():
         text-align: {text_align} !important;
         font-size: 20px !important;
     }}
+    /* 成功消息 */
     .stAlert {{
         padding: 0.5rem !important;
     }}
@@ -505,14 +507,12 @@ def render_main_app():
             st.markdown(f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
         with col_refresh:
             if st.button("🔄", key="refresh_btn", help="刷新数据", use_container_width=True):
-                if "payment_url" in st.session_state:
-                    del st.session_state.payment_url
                 st.rerun()
         
         st.markdown("---")
         
-        # 三个卡片
-        col_card1, col_card2, col_card3 = st.columns(3)
+        # 四个卡片
+        col_card1, col_card2, col_card3, col_upgrade = st.columns([1, 1, 1, 1.2])
         
         with col_card1:
             if tier == "free":
@@ -534,17 +534,12 @@ def render_main_app():
         with col_card3:
             st.metric(t()["total_usage"], total_usage, border=True)
         
-        st.markdown("---")
-        
-        # 升级区域（单独一行）
-        if tier == "free":
-            st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
-            
-            col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
-            with col_btn2:
-                # 月付按钮 - 创建会话后显示链接
-                if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
-                    with st.spinner("正在创建支付会话..."):
+        with col_upgrade:
+            if tier == "free":
+                st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
+                
+                if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True, type="primary"):
+                    with st.spinner("正在跳转到 Stripe 支付页面..."):
                         try:
                             session = stripe.checkout.Session.create(
                                 customer_email=st.session_state.user_email,
@@ -555,15 +550,12 @@ def render_main_app():
                                 cancel_url="https://techlife-app.streamlit.app",
                                 metadata={'user_id': st.session_state.user_id, 'plan': 'monthly'}
                             )
-                            st.session_state.payment_url = session.url
-                            st.session_state.payment_type = "monthly"
-                            st.rerun()
+                            st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
                         except Exception as e:
                             st.error(f"创建支付会话失败: {e}")
                 
-                # 年付按钮
-                if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True):
-                    with st.spinner("正在创建支付会话..."):
+                if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True, type="primary"):
+                    with st.spinner("正在跳转到 Stripe 支付页面..."):
                         try:
                             session = stripe.checkout.Session.create(
                                 customer_email=st.session_state.user_email,
@@ -574,20 +566,12 @@ def render_main_app():
                                 cancel_url="https://techlife-app.streamlit.app",
                                 metadata={'user_id': st.session_state.user_id, 'plan': 'yearly'}
                             )
-                            st.session_state.payment_url = session.url
-                            st.session_state.payment_type = "yearly"
-                            st.rerun()
+                            st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
                         except Exception as e:
                             st.error(f"创建支付会话失败: {e}")
-                
-                # 显示支付链接
-                if "payment_url" in st.session_state and st.session_state.payment_url:
-                    st.success(f"✅ {st.session_state.payment_type} 支付会话已创建")
-                    st.link_button("💰 点击前往 Stripe 完成支付", st.session_state.payment_url, use_container_width=True)
-                    st.info("支付成功后，请点击上方的刷新按钮 🔄 更新状态")
-        else:
-            st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
-            st.success(t()["already_pro"])
+            else:
+                st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
+                st.success(t()["already_pro"])
         
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
