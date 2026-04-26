@@ -540,7 +540,7 @@ def render_main_app():
         with col_card3:
             st.metric(t()["total_usage"], total_usage, border=True)
         
-                with col_upgrade:
+        with col_upgrade:
             if tier == "free":
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
                 
