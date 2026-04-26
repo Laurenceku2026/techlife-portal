@@ -342,6 +342,28 @@ def render_top_buttons():
             st.session_state.show_admin_login = True
             st.rerun()
 
+# ==================== 临时测试按钮 ====================
+def render_test_button():
+    if st.button("🧪 测试 Stripe 连接"):
+        try:
+            import stripe
+            stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
+            
+            session = stripe.checkout.Session.create(
+                customer_email="test@example.com",
+                payment_method_types=['card'],
+                line_items=[{'price': st.secrets["STRIPE_PRICE_MONTHLY"], 'quantity': 1}],
+                mode='subscription',
+                success_url="https://techlife-app.streamlit.app",
+                cancel_url="https://techlife-app.streamlit.app"
+            )
+            st.success("✅ Session 创建成功")
+            st.write(f"URL: {session.url}")
+            st.link_button("打开 Stripe", session.url)
+        except Exception as e:
+            st.error(f"❌ 错误: {e}")
+            st.code(str(e))
+
 def render_admin_login_form():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -713,6 +735,7 @@ def render_admin_panel():
 
 def main():
     render_sidebar()
+    render_test_button()  # 添加这行
     render_top_buttons()
     if st.session_state.get("show_admin_login", False):
         render_admin_login_form()
