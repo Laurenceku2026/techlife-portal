@@ -547,7 +547,10 @@ def render_main_app():
                             st.error(f"创建支付会话失败: {e}")
             else:
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
-                st.success("✅ 已是专业版", icon="🎉")
+                if st.session_state.lang == "zh":
+                    st.success("✅ 已是专业版", icon="🎉")
+                else:
+                    st.success("✅ Pro", icon="🎉")
         
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
