@@ -323,7 +323,7 @@ def render_sidebar():
                 st.session_state.admin_mode = False
                 st.rerun()
             
-            # 侧边栏升级按钮（红底白字）
+            # ==================== 侧边栏升级按钮（与主页面一致 + 支持中英文） ====================
             if tier == "free":
                 st.markdown("---")
                 st.markdown(f"### 💎 {t()['upgrade_title']}")
@@ -331,24 +331,44 @@ def render_sidebar():
                 st.markdown(t()["pro_feature_1"])
                 st.markdown(t()["pro_feature_2"])
                 st.markdown(t()["pro_feature_3"])
+                
+                # 月付按钮
                 if st.button(t()["monthly"], key="sidebar_monthly_btn", use_container_width=True, type="primary"):
-                    url, error = create_checkout_session(
-                        st.session_state.user_id, st.session_state.user_email,
-                        st.secrets["STRIPE_PRICE_MONTHLY"]
-                    )
-                    if url:
-                        st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                    else:
-                        st.error(f"创建支付会话失败: {error}")
+                    spinner_text = "正在创建支付会话..." if st.session_state.lang == "zh" else "Creating payment session..."
+                    with st.spinner(spinner_text):
+                        url, error = create_checkout_session(
+                            st.session_state.user_id, st.session_state.user_email,
+                            st.secrets["STRIPE_PRICE_MONTHLY"]
+                        )
+                        if url:
+                            st.session_state.payment_url = url
+                            st.session_state.payment_type = "monthly"
+                            st.rerun()
+                        else:
+                            error_text = "创建支付会话失败" if st.session_state.lang == "zh" else "Failed to create payment session"
+                            st.error(f"{error_text}: {error}")
+                
+                # 年付按钮
                 if st.button(t()["yearly"], key="sidebar_yearly_btn", use_container_width=True, type="primary"):
-                    url, error = create_checkout_session(
-                        st.session_state.user_id, st.session_state.user_email,
-                        st.secrets["STRIPE_PRICE_YEARLY"]
-                    )
-                    if url:
-                        st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                    else:
-                        st.error(f"创建支付会话失败: {error}")
+                    spinner_text = "正在创建支付会话..." if st.session_state.lang == "zh" else "Creating payment session..."
+                    with st.spinner(spinner_text):
+                        url, error = create_checkout_session(
+                            st.session_state.user_id, st.session_state.user_email,
+                            st.secrets["STRIPE_PRICE_YEARLY"]
+                        )
+                        if url:
+                            st.session_state.payment_url = url
+                            st.session_state.payment_type = "yearly"
+                            st.rerun()
+                        else:
+                            error_text = "创建支付会话失败" if st.session_state.lang == "zh" else "Failed to create payment session"
+                            st.error(f"{error_text}: {error}")
+                
+                # 显示支付链接（与主页面一致）
+                if "payment_url" in st.session_state and st.session_state.payment_url:
+                    st.success(f"✅ {st.session_state.payment_type} {t()['payment_created']}")
+                    st.link_button(t()["go_to_payment"], st.session_state.payment_url, use_container_width=True)
+                    st.info(t()["refresh_tip"])
 
 def render_top_buttons():
     col1, col2, col3, col4, col5 = st.columns([8, 1.2, 1.2, 1.2, 1])
@@ -712,28 +732,4 @@ def render_admin_panel():
         st.warning(f"无法获取数据: {e}")
     
     st.markdown("---")
-    if st.button(t()["exit_admin"], use_container_width=True, key="admin_exit"):
-        st.session_state.admin_mode = False
-        st.session_state.authenticated = False
-        st.rerun()
-
-def main():
-    render_sidebar()
-    render_top_buttons()
-    if st.session_state.get("show_admin_login", False):
-        render_admin_login_form()
-    elif not st.session_state.authenticated:
-        if st.session_state.get("show_register", False):
-            render_register_form()
-        elif st.session_state.get("reset_password", False):
-            render_reset_password_form()
-        else:
-            render_login_form()
-    else:
-        if st.session_state.get("admin_mode", False):
-            render_admin_panel()
-        else:
-            render_main_app()
-
-if __name__ == "__main__":
-    main()
+    if
