@@ -119,7 +119,7 @@ TEXTS = {
         "pro_feature_3": "- ✅ 导出完整报告",
         "pro_monthly": "月付",
         "pro_yearly": "年付",
-        "already_pro": "已是专业版",
+        "already_pro": "✅ 已是专业版",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -195,7 +195,7 @@ Let AI become your Chief Quality Engineer.
         "pro_feature_3": "- ✅ Export full reports",
         "pro_monthly": "Monthly",
         "pro_yearly": "Yearly",
-        "already_pro": "Pro",
+        "already_pro": "✅ Pro",
     }
 }
 
@@ -450,32 +450,38 @@ def render_reset_password_form():
             st.rerun()
 
 def render_main_app():
-    # 自定义 CSS
-    st.markdown("""
+    # 自定义 CSS - 中文居中，英文左对齐
+    lang = st.session_state.lang
+    if lang == "zh":
+        text_align = "center"
+    else:
+        text_align = "left"
+    
+    st.markdown(f"""
     <style>
-    /* 卡片文字居中 */
-    div[data-testid="stMetric"] {
-        text-align: center !important;
-        justify-content: center !important;
-    }
-    div[data-testid="stMetric"] label {
-        text-align: center !important;
+    /* 卡片文字对齐 */
+    div[data-testid="stMetric"] {{
+        text-align: {text_align} !important;
+        justify-content: {text_align} !important;
+    }}
+    div[data-testid="stMetric"] label {{
+        text-align: {text_align} !important;
         width: 100% !important;
-        justify-content: center !important;
+        justify-content: {text_align} !important;
         font-size: 12px !important;
         white-space: nowrap !important;
-    }
-    div[data-testid="stMetric"] div {
-        text-align: center !important;
+    }}
+    div[data-testid="stMetric"] div {{
+        text-align: {text_align} !important;
         font-size: 20px !important;
-    }
-    /* 成功消息去掉图标，防止换行 */
-    .stAlert {
+    }}
+    /* 成功消息 */
+    .stAlert {{
         padding: 0.5rem !important;
-    }
-    .stAlert div[data-testid="stMarkdown"] {
+    }}
+    .stAlert div[data-testid="stMarkdown"] {{
         text-align: center !important;
-    }
+    }}
     </style>
     """, unsafe_allow_html=True)
     
@@ -565,11 +571,7 @@ def render_main_app():
                             st.error(f"创建支付会话失败: {e}")
             else:
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
-                # 不使用图标，避免换行
-                if st.session_state.lang == "zh":
-                    st.success(t()["already_pro"])
-                else:
-                    st.success(f"✅ {t()['already_pro']}")
+                st.success(t()["already_pro"])
         
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
