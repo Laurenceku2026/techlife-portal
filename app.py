@@ -119,7 +119,6 @@ TEXTS = {
         "pro_feature_3": "- ✅ 导出完整报告",
         "pro_monthly": "月付",
         "pro_yearly": "年付",
-        "payment_method": "付费方式",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -195,7 +194,6 @@ Let AI become your Chief Quality Engineer.
         "pro_feature_3": "- ✅ Export full reports",
         "pro_monthly": "Monthly",
         "pro_yearly": "Yearly",
-        "payment_method": "Payment",
     }
 }
 
@@ -277,9 +275,9 @@ def render_sidebar():
             else:
                 st.caption(f"📋 {t()['subscription']}: 💎 Pro")
                 if plan == "monthly":
-                    st.caption(f"💳 {t()['payment_method']}: {t()['pro_monthly']}")
+                    st.caption(f"💳 {t()['subscription_plan_label']}: {t()['pro_monthly']}")
                 elif plan == "yearly":
-                    st.caption(f"💳 {t()['payment_method']}: {t()['pro_yearly']}")
+                    st.caption(f"💳 {t()['subscription_plan_label']}: {t()['pro_yearly']}")
                 st.caption(f"📊 {t()['total_usage']}: {total_usage}")
             
             if st.button(t()["logout"], use_container_width=True):
@@ -450,6 +448,19 @@ def render_reset_password_form():
             st.rerun()
 
 def render_main_app():
+    # 自定义 CSS 让卡片文字完整显示
+    st.markdown("""
+    <style>
+    div[data-testid="stMetric"] label {
+        font-size: 13px !important;
+        white-space: nowrap !important;
+    }
+    div[data-testid="stMetric"] div {
+        font-size: 22px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     # 加载用户数据
     try:
         profile = get_user_profile(st.session_state.user_id)
@@ -628,9 +639,9 @@ def render_admin_panel():
                 if user.get("subscription_tier") == "pro":
                     plan = user.get("subscription_plan")
                     if plan == "monthly":
-                        plan_display = "💎 Pro (月付)"
+                        plan_display = "💎 Pro (Monthly)"
                     elif plan == "yearly":
-                        plan_display = "💎 Pro (年付)"
+                        plan_display = "💎 Pro (Yearly)"
                     else:
                         plan_display = "💎 Pro"
                 else:
