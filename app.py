@@ -246,21 +246,6 @@ def get_user_total_usage(user_id: str):
         pass
     return 0
 
-def create_checkout_session(user_id: str, user_email: str, price_id: str):
-    try:
-        session = stripe.checkout.Session.create(
-            customer_email=user_email,
-            payment_method_types=['card'],
-            line_items=[{'price': price_id, 'quantity': 1}],
-            mode='subscription',
-            success_url="https://techlife-app.streamlit.app?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url="https://techlife-app.streamlit.app",
-            metadata={'user_id': user_id, 'price_id': price_id}
-        )
-        return session.url, None
-    except Exception as e:
-        return None, str(e)
-
 # ==================== UI 组件 ====================
 def render_sidebar():
     with st.sidebar:
@@ -306,24 +291,36 @@ def render_sidebar():
                 st.markdown(t()["pro_feature_3"])
                 if st.button(t()["monthly"], key="sidebar_monthly_btn", use_container_width=True, type="primary"):
                     with st.spinner("正在创建支付会话..."):
-                        url, error = create_checkout_session(
-                            st.session_state.user_id, st.session_state.user_email,
-                            st.secrets["STRIPE_PRICE_MONTHLY"]
-                        )
-                        if url:
-                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                        else:
-                            st.error(f"创建支付会话失败: {error}")
+                        try:
+                            session = stripe.checkout.Session.create(
+                                customer_email=st.session_state.user_email,
+                                payment_method_types=['card'],
+                                line_items=[{'price': st.secrets["STRIPE_PRICE_MONTHLY"], 'quantity': 1}],
+                                mode='subscription',
+                                success_url="https://techlife-app.streamlit.app?session_id={CHECKOUT_SESSION_ID}",
+                                cancel_url="https://techlife-app.streamlit.app",
+                                metadata={'user_id': st.session_state.user_id}
+                            )
+                            st.markdown(f'<script>window.open("{session.url}", "_blank");</script>', unsafe_allow_html=True)
+                            st.success("✅ 支付页面已在新窗口打开")
+                        except Exception as e:
+                            st.error(f"创建支付会话失败: {e}")
                 if st.button(t()["yearly"], key="sidebar_yearly_btn", use_container_width=True, type="primary"):
                     with st.spinner("正在创建支付会话..."):
-                        url, error = create_checkout_session(
-                            st.session_state.user_id, st.session_state.user_email,
-                            st.secrets["STRIPE_PRICE_YEARLY"]
-                        )
-                        if url:
-                            st.markdown(f'<meta http-equiv="refresh" content="0; url={url}">', unsafe_allow_html=True)
-                        else:
-                            st.error(f"创建支付会话失败: {error}")
+                        try:
+                            session = stripe.checkout.Session.create(
+                                customer_email=st.session_state.user_email,
+                                payment_method_types=['card'],
+                                line_items=[{'price': st.secrets["STRIPE_PRICE_YEARLY"], 'quantity': 1}],
+                                mode='subscription',
+                                success_url="https://techlife-app.streamlit.app?session_id={CHECKOUT_SESSION_ID}",
+                                cancel_url="https://techlife-app.streamlit.app",
+                                metadata={'user_id': st.session_state.user_id}
+                            )
+                            st.markdown(f'<script>window.open("{session.url}", "_blank");</script>', unsafe_allow_html=True)
+                            st.success("✅ 支付页面已在新窗口打开")
+                        except Exception as e:
+                            st.error(f"创建支付会话失败: {e}")
 
 def render_top_buttons():
     col1, col2, col3, col4, col5 = st.columns([8, 1.2, 1.2, 1.2, 1])
@@ -341,28 +338,6 @@ def render_top_buttons():
         if st.button("⚙️", key="gear_btn", help="Admin Login", use_container_width=True):
             st.session_state.show_admin_login = True
             st.rerun()
-
-# ==================== 临时测试按钮 ====================
-def render_test_button():
-    if st.button("🧪 测试 Stripe 连接"):
-        try:
-            import stripe
-            stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
-            
-            session = stripe.checkout.Session.create(
-                customer_email="test@example.com",
-                payment_method_types=['card'],
-                line_items=[{'price': st.secrets["STRIPE_PRICE_MONTHLY"], 'quantity': 1}],
-                mode='subscription',
-                success_url="https://techlife-app.streamlit.app",
-                cancel_url="https://techlife-app.streamlit.app"
-            )
-            st.success("✅ Session 创建成功")
-            st.write(f"URL: {session.url}")
-            st.link_button("打开 Stripe", session.url)
-        except Exception as e:
-            st.error(f"❌ 错误: {e}")
-            st.code(str(e))
 
 def render_admin_login_form():
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -469,11 +444,8 @@ def render_reset_password_form():
             st.rerun()
 
 def render_main_app():
-    # ============================================
-    # 1. 处理 Stripe 支付回调
-    # ============================================
+    # 处理 Stripe 支付回调
     query_params = st.query_params
-    
     if "session_id" in query_params:
         session_id = query_params["session_id"]
         with st.spinner("正在验证支付..."):
@@ -494,25 +466,20 @@ def render_main_app():
             except Exception as e:
                 st.error(f"验证失败: {e}")
     
-    # ============================================
-    # 2. 加载用户数据（带错误处理，防止卡死）
-    # ============================================
+    # 加载用户数据
     try:
-        with st.spinner("正在加载用户数据..."):
-            profile = get_user_profile(st.session_state.user_id)
-            tier = profile.get("subscription_tier", "free")
-            remaining = profile.get("free_trials_remaining", 30)
-            total_usage = get_user_total_usage(st.session_state.user_id)
+        profile = get_user_profile(st.session_state.user_id)
+        tier = profile.get("subscription_tier", "free")
+        remaining = profile.get("free_trials_remaining", 30)
+        total_usage = get_user_total_usage(st.session_state.user_id)
     except Exception as e:
         st.error(f"加载用户数据失败: {e}")
-        st.info("请刷新页面重试")
         tier = "free"
         remaining = 30
         total_usage = 0
     
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
-        # 欢迎语 + 刷新按钮
         col_welcome, col_refresh = st.columns([6, 1])
         with col_welcome:
             st.markdown(f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {st.session_state.user_email}</h3>", unsafe_allow_html=True)
@@ -522,21 +489,15 @@ def render_main_app():
         
         st.markdown("---")
         
-        # 四个卡片
         col_card1, col_card2, col_card3, col_upgrade = st.columns([1, 1, 1, 1.2])
         
         with col_card1:
             st.metric(t()["subscription"], "💎 Pro" if tier == "pro" else "🔒 Free", border=True)
-        
         with col_card2:
             if tier == "free":
                 st.metric(t()["free_trial"], remaining, border=True)
             else:
                 st.metric(t()["free_trial"], "∞", border=True)
-                expires_at = profile.get("subscription_expires_at")
-                if expires_at:
-                    st.caption(f"📅 {t()['expires_at']}: {expires_at[:10]}")
-        
         with col_card3:
             st.metric(t()["total_usage"], total_usage, border=True)
         
@@ -544,37 +505,39 @@ def render_main_app():
             if tier == "free":
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
                 
-                # 月付按钮 - 直接调用测试成功的逻辑
                 if st.button(t()["monthly"], key="main_monthly_btn", use_container_width=True):
-                    try:
-                        session = stripe.checkout.Session.create(
-                            customer_email=st.session_state.user_email,
-                            payment_method_types=['card'],
-                            line_items=[{'price': st.secrets["STRIPE_PRICE_MONTHLY"], 'quantity': 1}],
-                            mode='subscription',
-                            success_url="https://techlife-app.streamlit.app?session_id={CHECKOUT_SESSION_ID}",
-                            cancel_url="https://techlife-app.streamlit.app",
-                            metadata={'user_id': st.session_state.user_id}
-                        )
-                        st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
-                    except Exception as e:
-                        st.error(f"创建支付会话失败: {e}")
+                    with st.spinner("正在创建支付会话..."):
+                        try:
+                            session = stripe.checkout.Session.create(
+                                customer_email=st.session_state.user_email,
+                                payment_method_types=['card'],
+                                line_items=[{'price': st.secrets["STRIPE_PRICE_MONTHLY"], 'quantity': 1}],
+                                mode='subscription',
+                                success_url="https://techlife-app.streamlit.app?session_id={CHECKOUT_SESSION_ID}",
+                                cancel_url="https://techlife-app.streamlit.app",
+                                metadata={'user_id': st.session_state.user_id}
+                            )
+                            st.markdown(f'<script>window.open("{session.url}", "_blank");</script>', unsafe_allow_html=True)
+                            st.success("✅ 支付页面已在新窗口打开，请完成支付")
+                        except Exception as e:
+                            st.error(f"创建支付会话失败: {e}")
                 
-                # 年付按钮
                 if st.button(t()["yearly"], key="main_yearly_btn", use_container_width=True):
-                    try:
-                        session = stripe.checkout.Session.create(
-                            customer_email=st.session_state.user_email,
-                            payment_method_types=['card'],
-                            line_items=[{'price': st.secrets["STRIPE_PRICE_YEARLY"], 'quantity': 1}],
-                            mode='subscription',
-                            success_url="https://techlife-app.streamlit.app?session_id={CHECKOUT_SESSION_ID}",
-                            cancel_url="https://techlife-app.streamlit.app",
-                            metadata={'user_id': st.session_state.user_id}
-                        )
-                        st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
-                    except Exception as e:
-                        st.error(f"创建支付会话失败: {e}")
+                    with st.spinner("正在创建支付会话..."):
+                        try:
+                            session = stripe.checkout.Session.create(
+                                customer_email=st.session_state.user_email,
+                                payment_method_types=['card'],
+                                line_items=[{'price': st.secrets["STRIPE_PRICE_YEARLY"], 'quantity': 1}],
+                                mode='subscription',
+                                success_url="https://techlife-app.streamlit.app?session_id={CHECKOUT_SESSION_ID}",
+                                cancel_url="https://techlife-app.streamlit.app",
+                                metadata={'user_id': st.session_state.user_id}
+                            )
+                            st.markdown(f'<script>window.open("{session.url}", "_blank");</script>', unsafe_allow_html=True)
+                            st.success("✅ 支付页面已在新窗口打开，请完成支付")
+                        except Exception as e:
+                            st.error(f"创建支付会话失败: {e}")
             else:
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
                 st.success("✅ 已是专业版", icon="🎉")
@@ -745,7 +708,6 @@ def render_admin_panel():
 
 def main():
     render_sidebar()
-    render_test_button()  # 添加这行
     render_top_buttons()
     if st.session_state.get("show_admin_login", False):
         render_admin_login_form()
