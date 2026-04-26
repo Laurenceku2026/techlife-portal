@@ -119,6 +119,7 @@ TEXTS = {
         "pro_feature_3": "- ✅ 导出完整报告",
         "pro_monthly": "月付",
         "pro_yearly": "年付",
+        "already_pro": "已是专业版",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -194,6 +195,7 @@ Let AI become your Chief Quality Engineer.
         "pro_feature_3": "- ✅ Export full reports",
         "pro_monthly": "Monthly",
         "pro_yearly": "Yearly",
+        "already_pro": "Pro",
     }
 }
 
@@ -448,15 +450,31 @@ def render_reset_password_form():
             st.rerun()
 
 def render_main_app():
-    # 自定义 CSS 让卡片文字完整显示
+    # 自定义 CSS
     st.markdown("""
     <style>
+    /* 卡片文字居中 */
+    div[data-testid="stMetric"] {
+        text-align: center !important;
+        justify-content: center !important;
+    }
     div[data-testid="stMetric"] label {
-        font-size: 13px !important;
+        text-align: center !important;
+        width: 100% !important;
+        justify-content: center !important;
+        font-size: 12px !important;
         white-space: nowrap !important;
     }
     div[data-testid="stMetric"] div {
-        font-size: 22px !important;
+        text-align: center !important;
+        font-size: 20px !important;
+    }
+    /* 成功消息去掉图标，防止换行 */
+    .stAlert {
+        padding: 0.5rem !important;
+    }
+    .stAlert div[data-testid="stMarkdown"] {
+        text-align: center !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -547,10 +565,11 @@ def render_main_app():
                             st.error(f"创建支付会话失败: {e}")
             else:
                 st.markdown(f"<div style='text-align: center; font-weight: 500; margin-bottom: 8px;'>{t()['upgrade_title']}</div>", unsafe_allow_html=True)
+                # 不使用图标，避免换行
                 if st.session_state.lang == "zh":
-                    st.success("✅ 已是专业版", icon="🎉")
+                    st.success(t()["already_pro"])
                 else:
-                    st.success("✅ Pro", icon="🎉")
+                    st.success(f"✅ {t()['already_pro']}")
         
         st.markdown("---")
         st.markdown(f"### {t()['nav_title']}")
