@@ -479,28 +479,31 @@ def render_register_form():
             submitted = st.form_submit_button(t()["register_submit"], type="primary", use_container_width=True)
             if submitted:
                 if not email or not password:
-                    st.warning("请填写邮箱和密码")
+                    st.warning("请填写邮箱和密码" if st.session_state.lang == "zh" else "Please fill in email and password")
                 elif password != confirm:
-                    st.warning("两次输入的密码不一致")
+                    st.warning("两次输入的密码不一致" if st.session_state.lang == "zh" else "Passwords do not match")
                 elif len(password) < 6:
-                    st.warning("密码长度至少6位")
+                    st.warning("密码长度至少6位" if st.session_state.lang == "zh" else "Password must be at least 6 characters")
                 else:
                     try:
                         auth_url = f"{SUPABASE_URL}/auth/v1/signup"
                         auth_headers = {"apikey": SUPABASE_KEY, "Content-Type": "application/json"}
                         response = requests.post(auth_url, headers=auth_headers, json={"email": email, "password": password})
                         if response.status_code == 200:
+                            # 注册成功，显示提示并停留
                             st.success(t()["register_success"])
-                            st.session_state.show_register = False
-                            st.rerun()
+                            st.info("👈 " + ("请点击左侧返回登录按钮" if st.session_state.lang == "zh" else "Please click the back button on the left to login"))
+                            # 不自动跳转，让用户手动点击返回登录
                         else:
                             error_msg = response.json().get("msg", "注册失败")
                             if "User already registered" in error_msg:
                                 st.error(t()["email_exists"])
                             else:
-                                st.error(f"注册失败: {error_msg}")
+                                st.error(f"注册失败: {error_msg}" if st.session_state.lang == "zh" else f"Registration failed: {error_msg}")
                     except Exception as e:
-                        st.error(f"注册失败: {e}")
+                        st.error(f"注册失败: {e}" if st.session_state.lang == "zh" else f"Registration failed: {e}")
+        
+        # 返回登录按钮（始终显示）
         if st.button(t()["back_to_login"], use_container_width=True):
             st.session_state.show_register = False
             st.rerun()
