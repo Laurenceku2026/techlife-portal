@@ -492,7 +492,7 @@ def render_register_form():
                         if response.status_code == 200:
                             # 注册成功，显示提示并停留
                             st.success(t()["register_success"])
-                            st.info("👈 " + ("请点击左侧返回登录按钮" if st.session_state.lang == "zh" else "Please click the back button on the left to login"))
+                            st.info("👈 " + ("请点击下方返回登录按钮" if st.session_state.lang == "zh" else "Please click the back button below to login"))
                             # 不自动跳转，让用户手动点击返回登录
                         else:
                             error_msg = response.json().get("msg", "注册失败")
