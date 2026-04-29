@@ -11,11 +11,12 @@ ADMIN_USERNAME = "Laurence_ku"
 ADMIN_PASSWORD = "Ku_product$2026"
 ADMIN_EMAIL = "techlife2027@gmail.com"
 
-# 三个 APP 的 URL
+# 四个 APP 的 URL
 APP_URLS = {
     "feasibility": "https://appuct-feasibility-analysis.streamlit.app",
     "dqa": "https://ai-design-dfmea.streamlit.app",
-    "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app"
+    "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app",
+    "eml": "https://healthy-light-calculator.streamlit.app"
 }
 
 # ==================== Stripe 配置 ====================
@@ -323,7 +324,7 @@ def render_sidebar():
                 st.session_state.admin_mode = False
                 st.rerun()
             
-            # ==================== 侧边栏升级按钮（与主页面一致 + 支持中英文） ====================
+            # ==================== 侧边栏升级按钮 ====================
             if tier == "free":
                 st.markdown("---")
                 st.markdown(f"### 💎 {t()['upgrade_title']}")
@@ -364,15 +365,13 @@ def render_sidebar():
                             error_text = "创建支付会话失败" if st.session_state.lang == "zh" else "Failed to create payment session"
                             st.error(f"{error_text}: {error}")
                 
-                # 显示支付链接（自定义红底白字按钮）
+                # 显示支付链接
                 if "payment_url" in st.session_state and st.session_state.payment_url:
-                    # 将 payment_type 转换为显示文本
                     if st.session_state.payment_type == "monthly":
                         payment_display = "月付" if st.session_state.lang == "zh" else "Monthly"
                     else:
                         payment_display = "年付" if st.session_state.lang == "zh" else "Yearly"
                     st.success(f"✅ {payment_display} {t()['payment_created']}")
-                    # 仅此按钮使用红底白字样式
                     button_html = f'''
                     <a href="{st.session_state.payment_url}" target="_blank" style="
                         display: block;
@@ -490,10 +489,8 @@ def render_register_form():
                         auth_headers = {"apikey": SUPABASE_KEY, "Content-Type": "application/json"}
                         response = requests.post(auth_url, headers=auth_headers, json={"email": email, "password": password})
                         if response.status_code == 200:
-                            # 注册成功，显示提示并停留
                             st.success(t()["register_success"])
                             st.info("👈 " + ("请点击下方返回登录按钮" if st.session_state.lang == "zh" else "Please click the back button below to login"))
-                            # 不自动跳转，让用户手动点击返回登录
                         else:
                             error_msg = response.json().get("msg", "注册失败")
                             if "User already registered" in error_msg:
@@ -503,7 +500,6 @@ def render_register_form():
                     except Exception as e:
                         st.error(f"注册失败: {e}" if st.session_state.lang == "zh" else f"Registration failed: {e}")
         
-        # 返回登录按钮（始终显示）
         if st.button(t()["back_to_login"], use_container_width=True):
             st.session_state.show_register = False
             st.rerun()
@@ -596,15 +592,13 @@ def render_main_app():
                             error_text = "创建支付会话失败" if st.session_state.lang == "zh" else "Failed to create payment session"
                             st.error(f"{error_text}: {error}")
                 
-                # 显示支付链接（自定义红底白字按钮）
+                # 显示支付链接
                 if "payment_url" in st.session_state and st.session_state.payment_url:
-                    # 将 payment_type 转换为显示文本
                     if st.session_state.payment_type == "monthly":
                         payment_display = "月付" if st.session_state.lang == "zh" else "Monthly"
                     else:
                         payment_display = "年付" if st.session_state.lang == "zh" else "Yearly"
                     st.success(f"✅ {payment_display} {t()['payment_created']}")
-                    # 仅此按钮使用红底白字样式
                     button_html = f'''
                     <a href="{st.session_state.payment_url}" target="_blank" style="
                         display: block;
@@ -634,6 +628,7 @@ def render_main_app():
         st.markdown(f"### {t()['nav_title']}")
         st.caption(t()["open_new_tab"])
         
+        # ==================== 四个应用卡片 ====================
         apps = {
             "📊 Product Feasibility": {
                 "desc": "产品可行性分析 - 挖掘市场与用户之声",
@@ -649,6 +644,12 @@ def render_main_app():
                 "desc": "蒙特卡洛模拟 - 累积公差仿真",
                 "desc_en": "Monte Carlo Simulation - Tolerance Stack-up",
                 "url": APP_URLS["paravary"]
+            },
+            # ================== 新增 EML Calculator ==================
+            "💡 EML Calculator": {
+                "desc": "健康照明EML/m-EDI计算器 - 光谱分析与节律效应评估",
+                "desc_en": "Healthy Lighting EML/m-EDI Calculator - Spectral Analysis & Circadian Evaluation",
+                "url": APP_URLS["eml"]
             }
         }
         
