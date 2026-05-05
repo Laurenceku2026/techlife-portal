@@ -11,10 +11,11 @@ ADMIN_USERNAME = "Laurence_ku"
 ADMIN_PASSWORD = "Ku_product$2026"
 ADMIN_EMAIL = "techlife2027@gmail.com"
 
-# 四个 APP 的 URL
+# 五个 APP 的 URL（新增 AI-FA）
 APP_URLS = {
     "feasibility": "https://appuct-feasibility-analysis.streamlit.app",
     "dqa": "https://ai-design-dfmea.streamlit.app",
+    "fa": "https://ai-fa-8d.streamlit.app",                    # 新增 AI-FA
     "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app",
     "eml": "https://healthy-light-calculator.streamlit.app"
 }
@@ -538,8 +539,9 @@ def render_main_app():
         
         st.markdown("---")
         
-        # 第二行：四个卡片
-        col_card1, col_card2, col_card3, col_upgrade = st.columns([1, 1, 1, 1.2])
+        # 第二行：四个卡片（注意：现在是五个应用，需要调整列数）
+        # 使用 5 列布局
+        col_card1, col_card2, col_card3, col_card4, col_upgrade = st.columns([1, 1, 1, 1, 1.2])
         
         with col_card1:
             st.metric(t()["subscription"], "💎 Pro" if tier == "pro" else "🔒 Free", border=True)
@@ -555,6 +557,10 @@ def render_main_app():
         
         with col_card3:
             st.metric(t()["total_usage"], total_usage, border=True)
+        
+        with col_card4:
+            # 预留空位或显示其他信息
+            st.caption("")
         
         with col_upgrade:
             if tier == "free":
@@ -628,7 +634,9 @@ def render_main_app():
         st.markdown(f"### {t()['nav_title']}")
         st.caption(t()["open_new_tab"])
         
-        # ==================== 四个应用卡片 ====================
+        # ==================== 五个应用卡片 ====================
+        # 顺序：1. Product Feasibility, 2. AI-DQA, 3. AI-FA (新增), 4. Para-Vary, 5. EML Calculator
+        
         apps = {
             "📊 Product Feasibility": {
                 "desc": "产品可行性分析 - 挖掘市场与用户之声",
@@ -640,12 +648,17 @@ def render_main_app():
                 "desc_en": "Design Risk Analysis - AI-powered DFMEA",
                 "url": APP_URLS["dqa"]
             },
+            # ================== 新增 AI-FA 智能故障分析 ==================
+            "🔬 AI-FA": {
+                "desc": "智能故障分析 - AI驱动5-Why根因定位与8D报告",
+                "desc_en": "Intelligent Failure Analysis - AI-powered 5-Why Root Cause & 8D Report",
+                "url": APP_URLS["fa"]
+            },
             "📈 Para-Vary": {
                 "desc": "蒙特卡洛模拟 - 累积公差仿真",
                 "desc_en": "Monte Carlo Simulation - Tolerance Stack-up",
                 "url": APP_URLS["paravary"]
             },
-            # ================== 新增 EML Calculator ==================
             "💡 EML Calculator": {
                 "desc": "健康照明EML/m-EDI计算器 - 光谱分析与节律效应评估",
                 "desc_en": "Healthy Lighting EML/m-EDI Calculator - Spectral Analysis & Circadian Evaluation",
