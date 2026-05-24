@@ -271,18 +271,13 @@ def create_checkout_session(user_id: str, user_email: str, price_id: str):
 
 #---
 def handle_stripe_callback():
-    """处理 Stripe 支付成功回调（简化版）"""
+    """处理 Stripe 支付成功回调"""
     query_params = st.query_params
     if "session_id" in query_params:
-        # 设置标志，表示刚刚支付成功
-        st.session_state.just_paid = True
-        # 清除登录状态，让用户看到登录页面
-        st.session_state.authenticated = False
-        st.session_state.user_id = None
-        st.session_state.user_email = None
-        # 清除 URL 参数
+        # 清除 session_id，重定向到带 payment_success 的 URL
         st.query_params.clear()
-        st.rerun()
+        st.markdown('<meta http-equiv="refresh" content="0; url=/?payment_success=true">', unsafe_allow_html=True)
+        st.stop()
 
 # ==================== UI 组件 ====================
 def render_sidebar():
@@ -431,14 +426,11 @@ def render_admin_login_form():
             st.rerun()
 #-------------
 def render_login_form():
-    #"""显示登录表单"""
-    # 只在未登录时显示支付成功消息
-    if not st.session_state.get("authenticated", False):
-        if st.session_state.get("just_paid", False):
-            st.success("🎉 支付成功！您已升级为专业版用户")
-            st.info("📌 请登录")
-            # 清除标志，登录后不再显示
-            st.session_state.just_paid = False
+    # 检查 URL 参数
+    query_params = st.query_params
+    if "payment_success" in query_params:
+        st.success("🎉 支付成功！您已升级为专业版用户")
+        st.query_params.clear()
     
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
