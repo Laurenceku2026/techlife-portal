@@ -276,7 +276,7 @@ def handle_stripe_callback():
     if "session_id" in query_params:
         # 直接显示成功消息（不刷新页面）
         st.success("🎉 支付成功！您已升级为专业版用户")
-        st.info("📌 请登录以激活专业版权限")
+        st.info("📌 请已经以激活专业版权限")
         # 清除 URL 参数
         st.query_params.clear()
         # 不要调用 st.rerun()
