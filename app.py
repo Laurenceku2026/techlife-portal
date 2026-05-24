@@ -274,9 +274,15 @@ def handle_stripe_callback():
     """处理 Stripe 支付成功回调（简化版）"""
     query_params = st.query_params
     if "session_id" in query_params:
-        st.success("🎉 支付成功！您已升级为专业版用户")
-        st.info("📌 请重新登录")
+        # 设置标志，表示刚刚支付成功
+        st.session_state.just_paid = True
+        # 清除登录状态，让用户看到登录页面
+        st.session_state.authenticated = False
+        st.session_state.user_id = None
+        st.session_state.user_email = None
+        # 清除 URL 参数
         st.query_params.clear()
+        st.rerun()
 
 # ==================== UI 组件 ====================
 def render_sidebar():
@@ -425,6 +431,13 @@ def render_admin_login_form():
             st.rerun()
 
 def render_login_form():
+    #"""显示登录表单"""
+    # 显示支付成功消息
+    if st.session_state.get("just_paid", False):
+        st.success("🎉 支付成功！您已升级为专业版用户")
+        st.info("📌 请重新登录")
+        st.session_state.just_paid = False
+    
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         st.markdown(f"<h1 style='text-align: center;'>{t()['main_title']}</h1>", unsafe_allow_html=True)
