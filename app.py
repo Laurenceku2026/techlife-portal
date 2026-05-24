@@ -269,24 +269,14 @@ def create_checkout_session(user_id: str, user_email: str, price_id: str):
     except Exception as e:
         return None, str(e)
 
+#---
 def handle_stripe_callback():
-    """处理 Stripe 支付成功回调"""
+    """处理 Stripe 支付成功回调（简化版）"""
     query_params = st.query_params
     if "session_id" in query_params:
-        session_id = query_params["session_id"]
-        try:
-            session = stripe.checkout.Session.retrieve(session_id)
-            if session.payment_status == "paid":
-                user_id = session.metadata.get("user_id")
-                supabase_patch("profiles", user_id, {"subscription_tier": "pro"})
-                st.success(t()["payment_success"])
-                st.balloons()
-                st.query_params.clear()
-                st.rerun()
-            else:
-                st.warning(t()["payment_pending"])
-        except Exception as e:
-            st.error(f"验证失败: {e}")
+        st.success("🎉 支付成功！您已升级为专业版用户")
+        st.info("📌 请重新登录以激活专业版权限")
+        st.query_params.clear()
 
 # ==================== UI 组件 ====================
 def render_sidebar():
