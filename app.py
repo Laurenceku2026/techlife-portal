@@ -275,7 +275,7 @@ def handle_stripe_callback():
     query_params = st.query_params
     if "session_id" in query_params:
         st.success("🎉 支付成功！您已升级为专业版用户")
-        st.info("📌 请重新登录以激活专业版权限")
+        st.info("📌 请重新登录")
         st.query_params.clear()
 
 # ==================== UI 组件 ====================
