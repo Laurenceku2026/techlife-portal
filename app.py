@@ -429,14 +429,16 @@ def render_admin_login_form():
         if st.button(t()["admin_back"], use_container_width=True):
             st.session_state.show_admin_login = False
             st.rerun()
-
+#-------------
 def render_login_form():
     #"""显示登录表单"""
-    # 显示支付成功消息
-    if st.session_state.get("just_paid", False):
-        st.success("🎉 支付成功！您已升级为专业版用户")
-        st.info("📌 请重新登录")
-        st.session_state.just_paid = False
+    # 只在未登录时显示支付成功消息
+    if not st.session_state.get("authenticated", False):
+        if st.session_state.get("just_paid", False):
+            st.success("🎉 支付成功！您已升级为专业版用户")
+            st.info("📌 请登录")
+            # 清除标志，登录后不再显示
+            st.session_state.just_paid = False
     
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
@@ -453,6 +455,7 @@ def render_login_form():
                     response = requests.post(auth_url, headers=auth_headers, json={"email": email, "password": password})
                     if response.status_code == 200:
                         data = response.json()
+                        st.session_state.just_paid = False  # 👈 添加这一行
                         st.session_state.authenticated = True
                         st.session_state.user_id = data.get("user", {}).get("id")
                         st.session_state.user_email = email
