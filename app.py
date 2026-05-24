@@ -429,12 +429,12 @@ def render_admin_login_form():
 #-------------
 def render_login_form():
     #"""显示登录表单"""
-    # 检查支付成功参数
     query_params = st.query_params
     if "payment_success" in query_params:
         st.success("🎉 支付成功！您已升级为专业版用户")
         st.info("📌 请登录以激活专业版权限")
         st.query_params.clear()
+    
     # 以下是原有的登录表单代码
     
     col1, col2, col3 = st.columns([1, 3, 1])
