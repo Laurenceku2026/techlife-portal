@@ -429,38 +429,32 @@ def render_admin_login_form():
 #-------------
 def render_login_form():
     """显示登录表单"""
+    # 检查支付成功参数
     query_params = st.query_params
     if "payment_success" in query_params:
-        st.success("🎉 支付成功！您已升级为专业版用户")  # 前面有4个空格
-        st.info("📌 请登录以激活专业版权限")           # 前面有4个空格
-        st.query_params.clear()                       # 前面有4个空格
+        st.success("🎉 支付成功！您已升级为专业版用户")
+        st.info("📌 请重新登录")
+        st.query_params.clear()
     
-    # 以下是原有的登录表单代码
+    # 登录表单
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
         st.markdown(f"<h1 style='text-align: center;'>{t()['main_title']}</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='text-align: center; color: gray;'>{t()['main_subtitle']}</p>", unsafe_allow_html=True)
-        with st.form("login_form", border=True):
-            # ... 表单代码
-    
-    # 检查 URL 参数
-    
-    col1, col2, col3 = st.columns([1, 3, 1])
-    with col2:
-        st.markdown(f"<h1 style='text-align: center;'>{t()['main_title']}</h1>", unsafe_allow_html=True)
-        st.markdown(f"<p style='text-align: center; color: gray;'>{t()['main_subtitle']}</p>", unsafe_allow_html=True)
+        
         with st.form("login_form", border=True):
             email = st.text_input(t()["email_placeholder"], key="login_email")
             password = st.text_input(t()["password_placeholder"], type="password", key="login_password")
             submitted = st.form_submit_button(t()["login_btn"], type="primary", use_container_width=True)
+            
             if submitted and email and password:
                 try:
                     auth_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
                     auth_headers = {"apikey": SUPABASE_KEY, "Content-Type": "application/json"}
                     response = requests.post(auth_url, headers=auth_headers, json={"email": email, "password": password})
+                    
                     if response.status_code == 200:
                         data = response.json()
-                        st.session_state.just_paid = False  # 👈 添加这一行
                         st.session_state.authenticated = True
                         st.session_state.user_id = data.get("user", {}).get("id")
                         st.session_state.user_email = email
@@ -469,6 +463,8 @@ def render_login_form():
                         st.error(f"登录失败: {response.json().get('msg', '未知错误')}")
                 except Exception as e:
                     st.error(f"登录失败: {e}")
+        
+        # 注册和忘记密码按钮
         col_reg, col_forgot = st.columns(2)
         with col_reg:
             if st.button(t()["register_btn"], use_container_width=True):
