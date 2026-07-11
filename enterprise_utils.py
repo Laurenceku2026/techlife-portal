@@ -720,6 +720,8 @@ def add_tenant_knowledge(
     organization_id: str,
     category: str,
     content: str,
+    *,
+    content_en: Optional[str] = None,
 ) -> bool:
     result = supabase_insert(
         supabase_url,
@@ -728,7 +730,7 @@ def add_tenant_knowledge(
         {
             "category": category,
             "content": content,
-            "content_en": content,
+            "content_en": content_en or content,
             "scope": "tenant",
             "organization_id": organization_id,
             "created_at": datetime.now().isoformat(),
@@ -757,3 +759,147 @@ def delete_tenant_knowledge(
         "knowledge_base",
         f"id=eq.{record_id}&organization_id=eq.{organization_id}&scope=eq.tenant",
     )
+
+
+KB_EXCEL_COLUMNS_ZH = ["分类", "经验内容", "经验内容(英文)"]
+KB_EXCEL_COLUMNS_EN = ["Category", "Content", "Content (EN)"]
+
+_KB_COLUMN_ALIASES = {
+    "category": {"分类", "category", "Category"},
+    "content": {"经验内容", "content", "Content"},
+    "content_en": {"经验内容(英文)", "content_en", "Content (EN)", "Content_EN"},
+}
+
+
+def _kb_excel_columns(lang: str) -> List[str]:
+    return KB_EXCEL_COLUMNS_EN if lang == "en" else KB_EXCEL_COLUMNS_ZH
+
+
+def _normalize_kb_column(name: str) -> Optional[str]:
+    cleaned = (name or "").strip()
+    for field, aliases in _KB_COLUMN_ALIASES.items():
+        if cleaned in aliases:
+            return field
+    return None
+
+
+def build_kb_template_excel(lang: str = "zh") -> bytes:
+    import io
+
+    import pandas as pd
+
+    columns = _kb_excel_columns(lang)
+    buffer = io.BytesIO()
+    pd.DataFrame(columns=columns).to_excel(buffer, index=False, engine="openpyxl")
+    return buffer.getvalue()
+
+
+def build_kb_export_excel(entries: List[Dict[str, Any]], lang: str = "zh") -> bytes:
+    import io
+
+    import pandas as pd
+
+    columns = _kb_excel_columns(lang)
+    rows = [
+        {
+            columns[0]: entry.get("category", ""),
+            columns[1]: entry.get("content", ""),
+            columns[2]: entry.get("content_en", "") or entry.get("content", ""),
+        }
+        for entry in entries
+    ]
+    buffer = io.BytesIO()
+    pd.DataFrame(rows, columns=columns).to_excel(buffer, index=False, engine="openpyxl")
+    return buffer.getvalue()
+
+
+def delete_all_tenant_knowledge(
+    supabase_url: str,
+    headers: Dict[str, str],
+    organization_id: str,
+) -> bool:
+    if not organization_id:
+        return False
+    return supabase_delete(
+        supabase_url,
+        headers,
+        "knowledge_base",
+        f"organization_id=eq.{quote(str(organization_id), safe='')}&scope=eq.tenant",
+    )
+
+
+def import_tenant_knowledge_excel(
+    supabase_url: str,
+    headers: Dict[str, str],
+    organization_id: str,
+    file_bytes: bytes,
+    *,
+    replace_existing: bool = False,
+) -> tuple[int, str]:
+    import io
+
+    import pandas as pd
+
+    if not organization_id:
+        return 0, "missing_org_id"
+    if not file_bytes:
+        return 0, "empty_file"
+
+    try:
+        frame = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl")
+    except Exception as exc:
+        return 0, f"invalid_excel:{exc}"
+
+    if frame.empty:
+        return 0, "no_rows"
+
+    column_map: Dict[str, str] = {}
+    for column in frame.columns:
+        normalized = _normalize_kb_column(str(column))
+        if normalized:
+            column_map[normalized] = column
+
+    if "category" not in column_map or "content" not in column_map:
+        return 0, "missing_columns"
+
+    rows_to_import: List[Dict[str, str]] = []
+    for _, row in frame.iterrows():
+        category = str(row.get(column_map["category"], "")).strip()
+        content = str(row.get(column_map["content"], "")).strip()
+        if not category and not content:
+            continue
+        if not content:
+            continue
+        content_en_col = column_map.get("content_en")
+        content_en = str(row.get(content_en_col, "")).strip() if content_en_col else content
+        if not content_en:
+            content_en = content
+        rows_to_import.append(
+            {
+                "category": category or KNOWLEDGE_CATEGORIES[0],
+                "content": content,
+                "content_en": content_en,
+            }
+        )
+
+    if not rows_to_import:
+        return 0, "no_valid_rows"
+
+    if replace_existing:
+        delete_all_tenant_knowledge(supabase_url, headers, organization_id)
+
+    imported = 0
+    for item in rows_to_import:
+        if add_tenant_knowledge(
+            supabase_url,
+            headers,
+            organization_id,
+            item["category"],
+            item["content"],
+            content_en=item["content_en"],
+        ):
+            imported += 1
+
+    if imported == 0:
+        return 0, "import_failed"
+    return imported, "ok"

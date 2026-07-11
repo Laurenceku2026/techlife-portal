@@ -10,6 +10,8 @@ from enterprise_utils import (
     add_tenant_knowledge,
     assign_or_provision_org_user,
     assign_user_to_org,
+    build_kb_export_excel,
+    build_kb_template_excel,
     change_user_password,
     clear_organization_logo,
     count_org_members,
@@ -18,6 +20,7 @@ from enterprise_utils import (
     delete_tenant_knowledge,
     find_user_id_by_email,
     get_full_profile,
+    import_tenant_knowledge_excel,
     is_enterprise_user,
     is_org_admin,
     list_org_members,
@@ -207,6 +210,18 @@ TEXTS = {
         "kb_content": "经验内容",
         "kb_add": "添加条目",
         "kb_delete": "删除",
+        "kb_db_title": "{org_name} · 独立知识数据库",
+        "kb_excel_hint": "可先下载空白模板，在本地填写后上传 Excel（.xlsx）导入。",
+        "kb_download_template": "下载空白模板",
+        "kb_download_data": "导出当前数据",
+        "kb_upload_excel": "上传 Excel 文件",
+        "kb_import_btn": "导入知识库",
+        "kb_replace_on_import": "导入前清空现有数据",
+        "kb_imported": "已导入 {count} 条记录",
+        "kb_import_failed": "导入失败",
+        "kb_invalid_excel": "Excel 文件格式无效",
+        "kb_missing_columns": "缺少必要列：分类、经验内容",
+        "kb_no_valid_rows": "未找到可导入的有效数据行",
         "user_mgmt_tab": "用户管理",
         "seat_limit_reached": "已达席位上限",
         "member_added": "成员已添加",
@@ -351,6 +366,18 @@ Let AI become your Chief Quality Engineer.
         "kb_content": "Content",
         "kb_add": "Add Entry",
         "kb_delete": "Delete",
+        "kb_db_title": "{org_name} · Dedicated Knowledge Database",
+        "kb_excel_hint": "Download the blank template, fill it locally, then upload the Excel (.xlsx) file to import.",
+        "kb_download_template": "Download Blank Template",
+        "kb_download_data": "Export Current Data",
+        "kb_upload_excel": "Upload Excel File",
+        "kb_import_btn": "Import Knowledge Base",
+        "kb_replace_on_import": "Clear existing data before import",
+        "kb_imported": "Imported {count} record(s)",
+        "kb_import_failed": "Import failed",
+        "kb_invalid_excel": "Invalid Excel file",
+        "kb_missing_columns": "Required columns missing: Category, Content",
+        "kb_no_valid_rows": "No valid rows found to import",
         "user_mgmt_tab": "User Management",
         "seat_limit_reached": "Seat limit reached",
         "member_added": "Member added",
@@ -1077,17 +1104,23 @@ def render_main_app():
         if org_name:
             render_enterprise_branding(profile)
 
-        col_welcome, col_refresh = st.columns([11, 1])
-        with col_welcome:
+        if enterprise:
             st.markdown(
                 f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {st.session_state.user_email}</h3>",
                 unsafe_allow_html=True,
             )
-        with col_refresh:
-            if st.button("🔄", key="refresh_btn", help="刷新数据", use_container_width=True):
-                if "payment_url" in st.session_state:
-                    del st.session_state.payment_url
-                st.rerun()
+        else:
+            col_welcome, col_refresh = st.columns([11, 1])
+            with col_welcome:
+                st.markdown(
+                    f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {st.session_state.user_email}</h3>",
+                    unsafe_allow_html=True,
+                )
+            with col_refresh:
+                if st.button("🔄", key="refresh_btn", help="刷新数据", use_container_width=True):
+                    if "payment_url" in st.session_state:
+                        del st.session_state.payment_url
+                    st.rerun()
 
         st.markdown("---")
 
@@ -1158,7 +1191,67 @@ def render_org_members_tab(profile):
 
 def render_org_kb_tab(profile):
     org_id = profile.get("organization_id")
+    org_name = profile.get("organization_name") or t()["enterprise_plan"]
     entries = list_tenant_knowledge(SUPABASE_URL, SERVICE_HEADERS, org_id)
+
+    st.markdown(f"### {t()['kb_db_title'].format(org_name=org_name)}")
+    st.caption(t()["kb_excel_hint"])
+
+    lang = st.session_state.lang
+    safe_org = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in org_name)
+    template_name = f"{safe_org}_knowledge_template.xlsx"
+    export_name = f"{safe_org}_knowledge_export.xlsx"
+
+    col_tpl, col_export = st.columns(2)
+    with col_tpl:
+        st.download_button(
+            t()["kb_download_template"],
+            data=build_kb_template_excel(lang),
+            file_name=template_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="kb_download_template_btn",
+        )
+    with col_export:
+        st.download_button(
+            t()["kb_download_data"],
+            data=build_kb_export_excel(entries, lang),
+            file_name=export_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="kb_download_export_btn",
+        )
+
+    uploaded_excel = st.file_uploader(
+        t()["kb_upload_excel"],
+        type=["xlsx"],
+        key="kb_excel_uploader",
+    )
+    replace_existing = st.checkbox(t()["kb_replace_on_import"], key="kb_replace_on_import")
+    if st.button(t()["kb_import_btn"], key="kb_import_btn", type="primary", use_container_width=True):
+        if not uploaded_excel:
+            st.warning(t()["kb_upload_excel"])
+        else:
+            imported, reason = import_tenant_knowledge_excel(
+                SUPABASE_URL,
+                SERVICE_HEADERS,
+                org_id,
+                uploaded_excel.getvalue(),
+                replace_existing=replace_existing,
+            )
+            if reason == "ok":
+                st.success(t()["kb_imported"].format(count=imported))
+                st.rerun()
+            elif reason == "missing_columns":
+                st.error(t()["kb_missing_columns"])
+            elif reason == "no_valid_rows":
+                st.error(t()["kb_no_valid_rows"])
+            elif reason.startswith("invalid_excel"):
+                st.error(t()["kb_invalid_excel"])
+            else:
+                st.error(f"{t()['kb_import_failed']}: {reason}")
+
+    st.markdown("---")
 
     if entries:
         kb_rows = [
