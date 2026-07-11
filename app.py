@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import stripe
 from datetime import datetime, timedelta
+from typing import Dict, Optional
 
 from portal_auth import build_app_launch_url
 from portal_enterprise_ui import enterprise_brand_markup
@@ -567,6 +568,62 @@ def apply_pending_guest_reset():
         reset_to_guest_session()
 
 
+PLATFORM_ADMIN_WIDGET_KEYS = (
+    "platform_admin_section",
+    "platform_kb_org_id",
+    "platform_selected_org_id",
+    "platform_kb_download_template_btn",
+    "platform_kb_download_export_btn",
+    "platform_kb_excel_uploader",
+    "platform_kb_replace_on_import",
+    "platform_kb_import_btn",
+    "platform_kb_delete_select",
+    "platform_kb_delete_btn",
+    "admin_select_user",
+    "admin_new_tier",
+    "admin_new_trials",
+    "admin_months",
+    "admin_update_btn",
+    "admin_reset_pwd",
+    "admin_reset_all",
+    "admin_exit",
+    "admin_username",
+    "admin_password",
+    "org_minus_btn",
+    "confirm_delete_org_btn",
+    "cancel_delete_org_btn",
+    "platform_update_org_btn",
+    "platform_assign_email",
+    "platform_assign_password",
+    "platform_assign_role_email",
+    "platform_remove_email",
+)
+
+
+def _reset_platform_admin_widget_state():
+    for key in PLATFORM_ADMIN_WIDGET_KEYS:
+        st.session_state.pop(key, None)
+    for key in list(st.session_state.keys()):
+        key_str = str(key)
+        if key_str.startswith("FormSubmitter:") and (
+            "platform_" in key_str or "admin_" in key_str or "org_" in key_str
+        ):
+            st.session_state.pop(key, None)
+    st.session_state.pop("_admin_tier_user", None)
+
+
+def apply_pending_admin_login():
+    if not st.session_state.pop("_pending_admin_login", False):
+        return
+    _reset_platform_admin_widget_state()
+    st.session_state.admin_mode = True
+    st.session_state.show_admin_login = False
+    st.session_state.authenticated = True
+    st.session_state.user_email = ADMIN_EMAIL or ""
+    st.session_state.user_id = "admin"
+    st.session_state.platform_admin_section = "users"
+
+
 ORG_ADMIN_WIDGET_KEYS = (
     "org_admin_section",
     "org_remove_select",
@@ -872,6 +929,7 @@ def render_top_buttons():
                 st.rerun()
         elif show_platform_gear:
             if st.button("⚙️", key="gear_btn", help="Admin Login", use_container_width=True):
+                _reset_platform_admin_widget_state()
                 st.session_state.show_admin_login = True
                 st.rerun()
 
@@ -891,11 +949,7 @@ def render_admin_login_form():
                         else "Platform admin credentials are not configured in Secrets."
                     )
                 elif username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-                    st.session_state.admin_mode = True
-                    st.session_state.show_admin_login = False
-                    st.session_state.authenticated = True
-                    st.session_state.user_email = ADMIN_EMAIL
-                    st.session_state.user_id = "admin"
+                    st.session_state._pending_admin_login = True
                     st.rerun()
                 else:
                     st.error(t()["admin_error"])
@@ -1277,7 +1331,7 @@ def render_tenant_kb_panel(
     org_id: str,
     org_name: str,
     *,
-    widget_keys: dict | None = None,
+    widget_keys: Optional[Dict[str, str]] = None,
 ):
     """Shared tenant knowledge base UI for org admins and platform admins."""
     keys = {
@@ -1304,10 +1358,19 @@ def render_tenant_kb_panel(
     export_name = f"{safe_org}_knowledge_export.xlsx"
 
     col_tpl, col_export = st.columns(2)
+    try:
+        template_bytes = build_kb_template_excel(org_name, lang)
+        export_bytes = build_kb_export_excel(entries, org_name, lang)
+    except Exception as exc:
+        st.error("知识库 Excel 生成失败" if st.session_state.lang == "zh" else "Failed to build knowledge base Excel")
+        st.caption(str(exc))
+        template_bytes = b""
+        export_bytes = b""
+
     with col_tpl:
         st.download_button(
             t()["kb_download_template"],
-            data=build_kb_template_excel(org_name, lang),
+            data=template_bytes,
             file_name=template_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
@@ -1316,7 +1379,7 @@ def render_tenant_kb_panel(
     with col_export:
         st.download_button(
             t()["kb_download_data"],
-            data=build_kb_export_excel(entries, org_name, lang),
+            data=export_bytes,
             file_name=export_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
@@ -1733,13 +1796,17 @@ def render_admin_user_section(users, auth_users):
 
     if users:
         user_options = [f"{u.get('email')} ({u.get('subscription_tier')})" for u in users]
-        if st.session_state.get("admin_select_user") not in user_options:
-            st.session_state.admin_select_user = user_options[0]
+        if user_options and st.session_state.get("admin_select_user") not in user_options:
+            st.session_state.pop("admin_select_user", None)
         selected = st.selectbox(t()["select_user"], user_options, key="admin_select_user")
         selected_email = selected.split(" (")[0]
         selected_user = next((u for u in users if u.get("email") == selected_email), None)
 
         if selected_user:
+            if st.session_state.get("_admin_tier_user") != selected_email:
+                st.session_state._admin_tier_user = selected_email
+                st.session_state.pop("admin_new_tier", None)
+                st.session_state.pop("admin_new_trials", None)
             col_s1, col_s2, col_s3 = st.columns(3)
             with col_s1:
                 tier_choices = ["free", "pro", "enterprise"]
@@ -1808,7 +1875,8 @@ def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     try:
         response = supabase_get("profiles")
-        users = response.json() if response.status_code == 200 else []
+        raw_users = response.json() if response.status_code == 200 else []
+        users = raw_users if isinstance(raw_users, list) else []
 
         auth_users = {}
         try:
@@ -1877,6 +1945,7 @@ def render_admin_panel():
 def main():
     try:
         apply_pending_guest_reset()
+        apply_pending_admin_login()
         apply_pending_org_admin_exit()
         if not st.session_state.get("authenticated"):
             st.session_state.admin_mode = False
