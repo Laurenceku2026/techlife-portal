@@ -10,6 +10,7 @@ from enterprise_utils import (
     add_tenant_knowledge,
     assign_or_provision_org_user,
     assign_user_to_org,
+    change_user_password,
     count_org_members,
     create_organization,
     delete_organization,
@@ -227,6 +228,13 @@ TEXTS = {
         "delete_minus": "− 删除",
         "delete_minus_help": "删除当前选中的企业",
         "pending_delete": "待删除企业",
+        "change_password": "修改密码",
+        "current_password": "当前密码",
+        "new_password": "新密码",
+        "confirm_new_password": "确认新密码",
+        "password_changed": "密码已更新，请使用新密码登录",
+        "current_password_wrong": "当前密码不正确",
+        "password_mismatch": "两次输入的新密码不一致",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -354,6 +362,13 @@ Let AI become your Chief Quality Engineer.
         "delete_minus": "− Delete",
         "delete_minus_help": "Delete the selected organization",
         "pending_delete": "Organization pending delete",
+        "change_password": "Change Password",
+        "current_password": "Current Password",
+        "new_password": "New Password",
+        "confirm_new_password": "Confirm New Password",
+        "password_changed": "Password updated. Please sign in with your new password.",
+        "current_password_wrong": "Current password is incorrect",
+        "password_mismatch": "New passwords do not match",
     }
 }
 
@@ -429,19 +444,39 @@ def handle_stripe_callback():
         st.query_params.clear()
 
 def reset_to_guest_session():
-    st.session_state.admin_mode = False
-    st.session_state.org_admin_mode = False
+    """Clear auth and widget state before showing the public login page."""
+    preserved_lang = st.session_state.get("lang", "zh")
+    password_flash = st.session_state.get("_password_changed_flash", False)
+    keys_to_delete = [key for key in list(st.session_state.keys()) if not str(key).startswith("_")]
+    for key in keys_to_delete:
+        del st.session_state[key]
+    st.session_state.lang = preserved_lang
     st.session_state.authenticated = False
     st.session_state.user_id = None
     st.session_state.user_email = None
+    st.session_state.admin_mode = False
+    st.session_state.org_admin_mode = False
     st.session_state.show_admin_login = False
+    st.session_state.show_register = False
+    st.session_state.reset_password = False
     st.session_state.pending_delete_org_id = None
-    if "platform_selected_org_id" in st.session_state:
-        del st.session_state.platform_selected_org_id
-    if "admin_select_user" in st.session_state:
-        del st.session_state.admin_select_user
-    if "payment_url" in st.session_state:
-        del st.session_state.payment_url
+    if password_flash:
+        st.session_state._password_changed_flash = True
+
+
+def request_guest_reset():
+    st.session_state._guest_reset = True
+
+
+def apply_pending_guest_reset():
+    if st.session_state.pop("_guest_reset", False):
+        reset_to_guest_session()
+
+
+def _safe_date_prefix(value, fallback: str = "-") -> str:
+    if not value:
+        return fallback
+    return str(value)[:10]
 
 
 def safe_get_profile(user_id: str):
@@ -456,6 +491,38 @@ def safe_get_profile(user_id: str):
             "org_role": None,
             "organization_name": None,
         }
+
+
+def render_sidebar_change_password():
+    with st.expander(t()["change_password"], expanded=False):
+        with st.form("sidebar_change_password_form", border=False):
+            current_password = st.text_input(t()["current_password"], type="password")
+            new_password = st.text_input(t()["new_password"], type="password")
+            confirm_password = st.text_input(t()["confirm_new_password"], type="password")
+            submitted = st.form_submit_button(t()["change_password"], use_container_width=True)
+            if submitted:
+                if len(new_password or "") < 6:
+                    st.warning(t()["password_required"])
+                elif new_password != confirm_password:
+                    st.warning(t()["password_mismatch"])
+                elif not current_password:
+                    st.warning(t()["current_password_wrong"])
+                else:
+                    ok, reason = change_user_password(
+                        SUPABASE_URL,
+                        SUPABASE_ANON_KEY,
+                        st.session_state.user_email,
+                        current_password,
+                        new_password,
+                    )
+                    if ok:
+                        st.session_state._password_changed_flash = True
+                        request_guest_reset()
+                        st.rerun()
+                    elif reason == "current_password_wrong":
+                        st.error(t()["current_password_wrong"])
+                    else:
+                        st.error(reason or t()["password_reset_failed"])
 
 
 # ==================== UI 组件 ====================
@@ -484,7 +551,7 @@ def render_sidebar():
             if st.session_state.user_id == "admin":
                 st.caption("平台管理员" if st.session_state.lang == "zh" else "Platform Admin")
                 if st.button(t()["logout"], use_container_width=True, key="admin_sidebar_logout"):
-                    reset_to_guest_session()
+                    request_guest_reset()
                     st.rerun()
             else:
                 if profile is None:
@@ -504,10 +571,12 @@ def render_sidebar():
                         st.caption(f"🎫 {t()['free_trial']}: ∞")
                         expires_at = profile.get("subscription_expires_at")
                         if expires_at:
-                            st.caption(f"📅 {t()['expires_at']}: {expires_at[:10]}")
+                            st.caption(f"📅 {t()['expires_at']}: {_safe_date_prefix(expires_at)}")
+
+                render_sidebar_change_password()
 
                 if st.button(t()["logout"], use_container_width=True):
-                    reset_to_guest_session()
+                    request_guest_reset()
                     st.rerun()
 
                 if not enterprise and tier == "free":
@@ -1240,12 +1309,6 @@ def render_platform_enterprise_section(users):
         st.exception(exc)
 
 
-def _safe_date_prefix(value, fallback: str = "-") -> str:
-    if not value:
-        return fallback
-    return str(value)[:10]
-
-
 def render_admin_user_section(users, auth_users):
     pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
     enterprise_users = [u for u in users if u.get("subscription_tier") == "enterprise"]
@@ -1406,11 +1469,14 @@ def render_admin_panel():
     
     st.markdown("---")
     if st.button(t()["exit_admin"], use_container_width=True, key="admin_exit"):
-        reset_to_guest_session()
+        request_guest_reset()
         st.rerun()
 
 def main():
     try:
+        apply_pending_guest_reset()
+        if st.session_state.pop("_password_changed_flash", False):
+            st.success(t()["password_changed"])
         render_sidebar()
         render_top_buttons()
         if st.session_state.get("show_admin_login", False):

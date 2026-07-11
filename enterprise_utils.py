@@ -440,6 +440,56 @@ def verify_login_credentials(
         return False, str(exc)
 
 
+def change_user_password(
+    supabase_url: str,
+    anon_key: str,
+    email: str,
+    current_password: str,
+    new_password: str,
+) -> tuple[bool, str]:
+    headers = {
+        "apikey": anon_key,
+        "Content-Type": "application/json",
+    }
+    try:
+        login_response = requests.post(
+            f"{supabase_url}/auth/v1/token?grant_type=password",
+            headers=headers,
+            json={"email": (email or "").strip(), "password": current_password},
+            timeout=15,
+        )
+        if login_response.status_code != 200:
+            return False, "current_password_wrong"
+
+        access_token = login_response.json().get("access_token")
+        if not access_token:
+            return False, "current_password_wrong"
+
+        update_response = requests.put(
+            f"{supabase_url}/auth/v1/user",
+            headers={
+                **headers,
+                "Authorization": f"Bearer {access_token}",
+            },
+            json={"password": new_password},
+            timeout=15,
+        )
+        if update_response.status_code in (200, 201):
+            return True, ""
+        try:
+            body = update_response.json()
+            return False, (
+                body.get("error_description")
+                or body.get("msg")
+                or body.get("message")
+                or update_response.text
+            )
+        except ValueError:
+            return False, update_response.text or f"HTTP {update_response.status_code}"
+    except Exception as exc:
+        return False, str(exc)
+
+
 def assign_or_provision_org_user(
     supabase_url: str,
     service_headers: Dict[str, str],
