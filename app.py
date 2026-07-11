@@ -654,6 +654,16 @@ def request_org_admin_exit():
     st.session_state._exit_org_admin_pending = True
 
 
+def request_org_admin_entry():
+    st.session_state._enter_org_admin_pending = True
+
+
+def apply_pending_org_admin_entry():
+    if st.session_state.pop("_enter_org_admin_pending", False):
+        reset_to_authenticated_main_session()
+        st.session_state.org_admin_mode = True
+
+
 def apply_pending_org_admin_exit():
     if st.session_state.pop("_exit_org_admin_pending", False):
         reset_to_authenticated_main_session()
@@ -923,10 +933,13 @@ def render_top_buttons():
                 st.rerun()
     with col4:
         if show_org_gear:
-            if st.button("⚙️", key="org_gear_btn", help=t()["org_admin_btn"], use_container_width=True):
-                _clear_org_admin_widget_keys()
-                st.session_state.org_admin_mode = True
-                st.rerun()
+            st.button(
+                "⚙️",
+                key="org_gear_btn",
+                help=t()["org_admin_btn"],
+                use_container_width=True,
+                on_click=request_org_admin_entry,
+            )
         elif show_platform_gear:
             if st.button("⚙️", key="gear_btn", help="Admin Login", use_container_width=True):
                 _reset_platform_admin_widget_state()
@@ -1468,6 +1481,9 @@ def render_tenant_kb_panel(
 def render_org_kb_tab(profile):
     org_id = profile.get("organization_id")
     org_name = profile.get("organization_name") or t()["enterprise_plan"]
+    if not org_id:
+        st.warning("未找到企业信息" if st.session_state.lang == "zh" else "Organization not found")
+        return
     render_tenant_kb_panel(org_id, org_name)
 
 
@@ -1946,6 +1962,7 @@ def main():
     try:
         apply_pending_guest_reset()
         apply_pending_admin_login()
+        apply_pending_org_admin_entry()
         apply_pending_org_admin_exit()
         if not st.session_state.get("authenticated"):
             st.session_state.admin_mode = False
