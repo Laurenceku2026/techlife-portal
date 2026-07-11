@@ -532,6 +532,38 @@ def apply_pending_guest_reset():
         reset_to_guest_session()
 
 
+ORG_ADMIN_WIDGET_KEYS = (
+    "org_remove_select",
+    "org_remove_btn",
+    "kb_download_template_btn",
+    "kb_download_export_btn",
+    "kb_excel_uploader",
+    "kb_replace_on_import",
+    "kb_import_btn",
+    "org_kb_delete_select",
+    "org_kb_delete_btn",
+    "org_admin_logo_uploader",
+    "org_admin_save_logo",
+    "org_admin_remove_logo",
+    "org_admin_exit",
+)
+
+
+def _clear_org_admin_widget_keys():
+    for key in ORG_ADMIN_WIDGET_KEYS:
+        st.session_state.pop(key, None)
+
+
+def request_org_admin_exit():
+    st.session_state._exit_org_admin_pending = True
+
+
+def apply_pending_org_admin_exit():
+    if st.session_state.pop("_exit_org_admin_pending", False):
+        st.session_state.org_admin_mode = False
+        _clear_org_admin_widget_keys()
+
+
 def _safe_date_prefix(value, fallback: str = "-") -> str:
     if not value:
         return fallback
@@ -1311,7 +1343,7 @@ def render_org_kb_tab(profile):
 def render_org_admin_panel():
     profile = safe_get_profile(st.session_state.user_id)
     if not is_org_admin(profile):
-        st.session_state.org_admin_mode = False
+        request_org_admin_exit()
         st.rerun()
         return
 
@@ -1332,7 +1364,7 @@ def render_org_admin_panel():
 
     st.markdown("---")
     if st.button(t()["exit_org_admin"], use_container_width=True, key="org_admin_exit"):
-        st.session_state.org_admin_mode = False
+        request_org_admin_exit()
         st.rerun()
 
 
@@ -1697,6 +1729,7 @@ def render_admin_panel():
 def main():
     try:
         apply_pending_guest_reset()
+        apply_pending_org_admin_exit()
         if st.session_state.pop("_password_changed_flash", False):
             st.success(t()["password_changed"])
         render_sidebar()
@@ -1718,7 +1751,8 @@ def main():
             else:
                 render_main_app()
     except Exception as exc:
-        st.error("应用运行出错，请稍后重试或联系管理员。" if st.session_state.lang == "zh" else "App error. Please retry or contact support.")
+        lang = st.session_state.get("lang", "zh")
+        st.error("应用运行出错，请稍后重试或联系管理员。" if lang == "zh" else "App error. Please retry or contact support.")
         st.exception(exc)
 
 if __name__ == "__main__":
