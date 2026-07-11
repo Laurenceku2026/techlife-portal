@@ -10,6 +10,15 @@ import requests
 KNOWLEDGE_CATEGORIES = ["光学", "机械", "材料", "热学", "电气", "控制"]
 
 
+def _parse_auth_users(data: Any) -> List[Dict[str, Any]]:
+    if isinstance(data, dict):
+        users = data.get("users")
+        return users if isinstance(users, list) else []
+    if isinstance(data, list):
+        return data
+    return []
+
+
 def _table_url(supabase_url: str, table: str, query: str = "") -> str:
     base = f"{supabase_url}/rest/v1/{table}"
     return f"{base}?{query}" if query else base
@@ -58,8 +67,13 @@ def supabase_insert(
             timeout=15,
         )
         if response.status_code in (200, 201):
-            rows = response.json()
-            return rows[0] if rows else data
+            try:
+                rows = response.json()
+                if isinstance(rows, list) and rows:
+                    return rows[0]
+            except ValueError:
+                pass
+            return data
     except Exception:
         pass
     return None
@@ -73,13 +87,15 @@ def supabase_update(
     data: Dict[str, Any],
     *,
     id_field: str = "id",
-) -> bool:
+) -> tuple[bool, str]:
     url = _table_url(supabase_url, table, f"{id_field}=eq.{row_id}")
     try:
         response = requests.patch(url, headers=headers, json=data, timeout=15)
-        return response.status_code in (200, 204)
-    except Exception:
-        return False
+        if response.status_code in (200, 204):
+            return True, ""
+        return False, response.text or f"HTTP {response.status_code}"
+    except Exception as exc:
+        return False, str(exc)
 
 
 def supabase_delete(
@@ -192,7 +208,8 @@ def update_organization(
     org_id: str,
     data: Dict[str, Any],
 ) -> bool:
-    return supabase_update(supabase_url, headers, "organizations", org_id, data)
+    ok, _ = supabase_update(supabase_url, headers, "organizations", org_id, data)
+    return ok
 
 
 def list_org_members(
@@ -233,7 +250,12 @@ def create_auth_user(
             timeout=15,
         )
         if response.status_code in (200, 201):
-            return response.json().get("id")
+            try:
+                body = response.json()
+                if isinstance(body, dict):
+                    return body.get("id")
+            except ValueError:
+                pass
         if response.status_code == 422 and "already" in response.text.lower():
             lookup = requests.get(
                 f"{supabase_url}/auth/v1/admin/users",
@@ -242,8 +264,7 @@ def create_auth_user(
             )
             if lookup.status_code == 200:
                 data = lookup.json()
-                users = data.get("users", []) if isinstance(data, dict) else data
-                for user in users:
+                for user in _parse_auth_users(data):
                     if (user.get("email") or "").lower() == email.lower():
                         return user.get("id")
     except Exception:
@@ -257,7 +278,7 @@ def ensure_profile(
     user_id: str,
     email: str,
     data: Dict[str, Any],
-) -> bool:
+) -> tuple[bool, str]:
     rows = supabase_select(
         supabase_url,
         headers,
@@ -268,7 +289,12 @@ def ensure_profile(
     if rows:
         return supabase_update(supabase_url, headers, "profiles", user_id, payload)
     payload["id"] = user_id
-    return supabase_insert(supabase_url, headers, "profiles", payload) is not None
+    payload.setdefault("free_trials_remaining", 0)
+    payload.setdefault("subscription_tier", "pro")
+    result = supabase_insert(supabase_url, headers, "profiles", payload)
+    if result is not None:
+        return True, ""
+    return False, "insert_failed"
 
 
 def find_user_id_by_email(
@@ -288,8 +314,7 @@ def find_user_id_by_email(
         )
         if response.status_code == 200:
             data = response.json()
-            user_list = data.get("users", []) if isinstance(data, dict) else data
-            for user in user_list:
+            for user in _parse_auth_users(data):
                 if (user.get("email") or "").strip().lower() == normalized:
                     return user.get("id")
     except Exception:
@@ -319,7 +344,7 @@ def assign_email_to_org(
     if not user_id:
         return False, "not_found"
 
-    ok = ensure_profile(
+    ok, detail = ensure_profile(
         supabase_url,
         service_headers,
         user_id,
@@ -327,11 +352,11 @@ def assign_email_to_org(
         {
             "organization_id": organization_id,
             "org_role": org_role,
-            "subscription_tier": "enterprise",
+            "subscription_tier": "pro",
         },
     )
     if not ok:
-        return False, "profile_failed"
+        return False, detail or "profile_failed"
     return True, "ok"
 
 
@@ -349,10 +374,11 @@ def assign_user_to_org(
         "org_role": org_role,
     }
     if make_enterprise and organization_id:
-        data["subscription_tier"] = "enterprise"
+        data["subscription_tier"] = "pro"
     elif not organization_id:
         data["org_role"] = None
-    return supabase_update(supabase_url, headers, "profiles", user_id, data)
+    ok, _ = supabase_update(supabase_url, headers, "profiles", user_id, data)
+    return ok
 
 
 def add_org_member(
@@ -371,7 +397,7 @@ def add_org_member(
     if not user_id:
         return False, "auth_failed"
 
-    ok = ensure_profile(
+    ok, reason = ensure_profile(
         supabase_url,
         service_headers,
         user_id,
@@ -379,11 +405,11 @@ def add_org_member(
         {
             "organization_id": organization_id,
             "org_role": org_role,
-            "subscription_tier": "enterprise",
+            "subscription_tier": "pro",
             "free_trials_remaining": 0,
         },
     )
-    return (ok, "ok" if ok else "profile_failed")
+    return (ok, "ok" if ok else (reason or "profile_failed"))
 
 
 def remove_org_member(

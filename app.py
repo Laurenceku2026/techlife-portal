@@ -22,6 +22,7 @@ from enterprise_utils import (
     list_tenant_knowledge,
     remove_org_member,
     update_organization,
+    _parse_auth_users,
 )
 
 # ==================== 页面配置 ====================
@@ -50,8 +51,8 @@ def _require_secret(key: str, *fallback_keys: str) -> str:
         st.stop()
     return value
 
-ADMIN_USERNAME = _require_secret("ADMIN_USERNAME")
-ADMIN_PASSWORD = _require_secret("ADMIN_PASSWORD")
+ADMIN_USERNAME = _get_secret("ADMIN_USERNAME")
+ADMIN_PASSWORD = _get_secret("ADMIN_PASSWORD")
 ADMIN_EMAIL = _get_secret("ADMIN_EMAIL")
 
 # 五个 APP 的 URL（新增 AI-FA）
@@ -64,8 +65,9 @@ APP_URLS = {
 }
 
 # ==================== Stripe 配置 ====================
-_stripe_key = _require_secret("STRIPE_SECRET_KEY")
-stripe.api_key = _stripe_key
+_stripe_key = _get_secret("STRIPE_SECRET_KEY")
+if _stripe_key:
+    stripe.api_key = _stripe_key
 
 # ==================== Supabase 配置 ====================
 SUPABASE_URL = _require_secret("SUPABASE_URL")
@@ -366,6 +368,9 @@ def get_user_total_usage(user_id: str):
 
 #------------
 def create_checkout_session(user_id: str, user_email: str, price_id: str):
+    if not _stripe_key:
+        return None, "Missing STRIPE_SECRET_KEY"
+    stripe.api_key = _stripe_key
     try:
         session = stripe.checkout.Session.create(
             customer_email=user_email,
@@ -399,7 +404,7 @@ def render_sidebar():
             profile = get_user_profile(st.session_state.user_id)
         enterprise = profile and is_enterprise_user(profile)
 
-        sidebar_title = profile.get("organization_name") if enterprise else t()["sidebar_title"]
+        sidebar_title = profile.get("organization_name") or t()["enterprise_plan"] if enterprise else t()["sidebar_title"]
         st.title(sidebar_title)
         st.subheader(t()["about_header"])
         st.markdown(t()["about_text"])
@@ -545,7 +550,13 @@ def render_admin_login_form():
             password = st.text_input(t()["admin_password"], type="password", key="admin_password")
             submitted = st.form_submit_button(t()["admin_login_btn"], type="primary", use_container_width=True)
             if submitted:
-                if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+                if not ADMIN_USERNAME or not ADMIN_PASSWORD:
+                    st.error(
+                        "平台管理员账号未在 Secrets 中配置（ADMIN_USERNAME / ADMIN_PASSWORD）"
+                        if st.session_state.lang == "zh"
+                        else "Platform admin credentials are not configured in Secrets."
+                    )
+                elif username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
                     st.session_state.admin_mode = True
                     st.session_state.show_admin_login = False
                     st.session_state.authenticated = True
@@ -1045,7 +1056,11 @@ def render_platform_enterprise_section(users):
                         elif reason == "not_found":
                             st.error(t()["user_not_found"])
                         else:
-                            st.error("绑定失败" if st.session_state.lang == "zh" else "Assignment failed")
+                            st.error(
+                                f"绑定失败: {reason}"
+                                if st.session_state.lang == "zh"
+                                else f"Assignment failed: {reason}"
+                            )
 
         st.caption(
             "输入邮箱即可指定企业管理员或成员，无需从下拉列表选择。"
@@ -1187,8 +1202,7 @@ def render_admin_panel():
             )
             if auth_response.status_code == 200:
                 data = auth_response.json()
-                user_list = data.get("users", []) if isinstance(data, dict) else data
-                for u in user_list:
+                for u in _parse_auth_users(data):
                     auth_users[u.get("id")] = {
                         "created_at": u.get("created_at", ""),
                         "last_sign_in_at": u.get("last_sign_in_at", ""),
@@ -1214,24 +1228,28 @@ def render_admin_panel():
         st.rerun()
 
 def main():
-    render_sidebar()
-    render_top_buttons()
-    if st.session_state.get("show_admin_login", False):
-        render_admin_login_form()
-    elif not st.session_state.authenticated:
-        if st.session_state.get("show_register", False):
-            render_register_form()
-        elif st.session_state.get("reset_password", False):
-            render_reset_password_form()
+    try:
+        render_sidebar()
+        render_top_buttons()
+        if st.session_state.get("show_admin_login", False):
+            render_admin_login_form()
+        elif not st.session_state.authenticated:
+            if st.session_state.get("show_register", False):
+                render_register_form()
+            elif st.session_state.get("reset_password", False):
+                render_reset_password_form()
+            else:
+                render_login_form()
         else:
-            render_login_form()
-    else:
-        if st.session_state.get("admin_mode", False):
-            render_admin_panel()
-        elif st.session_state.get("org_admin_mode", False):
-            render_org_admin_panel()
-        else:
-            render_main_app()
+            if st.session_state.get("admin_mode", False):
+                render_admin_panel()
+            elif st.session_state.get("org_admin_mode", False):
+                render_org_admin_panel()
+            else:
+                render_main_app()
+    except Exception as exc:
+        st.error("应用运行出错，请稍后重试或联系管理员。" if st.session_state.lang == "zh" else "App error. Please retry or contact support.")
+        st.exception(exc)
 
 if __name__ == "__main__":
     main()
