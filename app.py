@@ -523,6 +523,32 @@ def reset_to_guest_session():
         st.session_state._password_changed_flash = True
 
 
+def reset_to_authenticated_main_session():
+    """Clear widget state while keeping the logged-in enterprise/personal user."""
+    preserved_lang = st.session_state.get("lang", "zh")
+    password_flash = st.session_state.get("_password_changed_flash", False)
+    authenticated = st.session_state.get("authenticated", False)
+    user_id = st.session_state.get("user_id")
+    user_email = st.session_state.get("user_email")
+
+    keys_to_delete = [key for key in list(st.session_state.keys()) if not str(key).startswith("_")]
+    for key in keys_to_delete:
+        del st.session_state[key]
+
+    st.session_state.lang = preserved_lang
+    st.session_state.authenticated = authenticated
+    st.session_state.user_id = user_id
+    st.session_state.user_email = user_email
+    st.session_state.admin_mode = False
+    st.session_state.org_admin_mode = False
+    st.session_state.show_admin_login = False
+    st.session_state.show_register = False
+    st.session_state.reset_password = False
+    st.session_state.pending_delete_org_id = None
+    if password_flash:
+        st.session_state._password_changed_flash = True
+
+
 def request_guest_reset():
     st.session_state._guest_reset = True
 
@@ -533,6 +559,7 @@ def apply_pending_guest_reset():
 
 
 ORG_ADMIN_WIDGET_KEYS = (
+    "org_admin_section",
     "org_remove_select",
     "org_remove_btn",
     "kb_download_template_btn",
@@ -552,6 +579,9 @@ ORG_ADMIN_WIDGET_KEYS = (
 def _clear_org_admin_widget_keys():
     for key in ORG_ADMIN_WIDGET_KEYS:
         st.session_state.pop(key, None)
+    for key in list(st.session_state.keys()):
+        if str(key).startswith("FormSubmitter:") and "org_" in str(key):
+            st.session_state.pop(key, None)
 
 
 def request_org_admin_exit():
@@ -560,8 +590,7 @@ def request_org_admin_exit():
 
 def apply_pending_org_admin_exit():
     if st.session_state.pop("_exit_org_admin_pending", False):
-        st.session_state.org_admin_mode = False
-        _clear_org_admin_widget_keys()
+        reset_to_authenticated_main_session()
 
 
 def _safe_date_prefix(value, fallback: str = "-") -> str:
@@ -594,7 +623,10 @@ def render_enterprise_branding(profile):
     col_left, col_center, col_right = st.columns([1, 2, 1])
     with col_center:
         if logo_url:
-            st.image(logo_url, width=180)
+            try:
+                st.image(logo_url, width=180)
+            except Exception:
+                pass
         st.markdown(
             f"<h1 style='text-align: center; margin: 0 0 1rem 0; font-weight: 700;'>{org_name}</h1>",
             unsafe_allow_html=True,
@@ -826,6 +858,7 @@ def render_top_buttons():
     with col4:
         if show_org_gear:
             if st.button("⚙️", key="org_gear_btn", help=t()["org_admin_btn"], use_container_width=True):
+                _clear_org_admin_widget_keys()
                 st.session_state.org_admin_mode = True
                 st.rerun()
         elif show_platform_gear:
@@ -1350,12 +1383,24 @@ def render_org_admin_panel():
     org_name = profile.get("organization_name") or t()["enterprise_plan"]
     st.markdown(f"## ⚙️ {t()['org_admin_panel']} — {org_name}")
 
-    tab_members, tab_kb, tab_settings = st.tabs([t()["members_tab"], t()["kb_tab"], t()["settings_tab"]])
-    with tab_members:
+    section_labels = {
+        "members": t()["members_tab"],
+        "kb": t()["kb_tab"],
+        "settings": t()["settings_tab"],
+    }
+    selected_section = st.radio(
+        "org_admin_section",
+        list(section_labels.keys()),
+        format_func=lambda key: section_labels[key],
+        horizontal=True,
+        key="org_admin_section",
+        label_visibility="collapsed",
+    )
+    if selected_section == "members":
         render_org_members_tab(profile)
-    with tab_kb:
+    elif selected_section == "kb":
         render_org_kb_tab(profile)
-    with tab_settings:
+    else:
         render_org_logo_section(
             profile.get("organization_id"),
             profile.get("organization_logo_url"),
@@ -1363,9 +1408,12 @@ def render_org_admin_panel():
         )
 
     st.markdown("---")
-    if st.button(t()["exit_org_admin"], use_container_width=True, key="org_admin_exit"):
-        request_org_admin_exit()
-        st.rerun()
+    st.button(
+        t()["exit_org_admin"],
+        use_container_width=True,
+        key="org_admin_exit",
+        on_click=request_org_admin_exit,
+    )
 
 
 def render_platform_enterprise_section(users):
