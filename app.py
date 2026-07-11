@@ -8,7 +8,7 @@ from enterprise_utils import (
     KNOWLEDGE_CATEGORIES,
     add_org_member,
     add_tenant_knowledge,
-    assign_email_to_org,
+    assign_or_provision_org_user,
     assign_user_to_org,
     count_org_members,
     create_organization,
@@ -210,16 +210,19 @@ TEXTS = {
         "org_created": "企业已创建",
         "org_updated": "企业已更新",
         "user_assigned": "用户已绑定",
-        "assign_by_email": "按邮箱绑定",
-        "user_not_found": "未找到该邮箱用户，请先让对方注册 Portal 账号",
+        "assign_user_btn": "绑定并设置密码",
+        "login_email_hint": "登录用户名为上方邮箱；新用户将自动创建账号，已有用户将重置为上述初始密码",
+        "password_required": "请设置至少6位初始密码",
+        "password_reset_failed": "密码设置失败",
+        "user_not_found": "未找到该邮箱用户",
         "delete_org": "删除企业",
         "delete_org_confirm": "确认删除该企业（将解除所有成员绑定并删除企业知识库）",
         "org_deleted": "企业已删除",
         "confirm_delete_save": "确认删除",
         "cancel": "取消",
-        "selected_org_hint": "在下拉框选择要操作的企业，点右侧 − 删除，再点确认删除",
-        "delete_minus": "−",
-        "delete_minus_help": "删除选中的企业",
+        "selected_org_hint": "先在下拉框选择企业，再点列表标题右侧「− 删除」，最后确认删除",
+        "delete_minus": "− 删除",
+        "delete_minus_help": "删除当前选中的企业",
         "pending_delete": "待删除企业",
     },
     "en": {
@@ -332,16 +335,19 @@ Let AI become your Chief Quality Engineer.
         "org_created": "Organization created",
         "org_updated": "Organization updated",
         "user_assigned": "User assigned",
-        "assign_by_email": "Assign by Email",
-        "user_not_found": "Email not found. Ask the user to register on the portal first.",
+        "assign_user_btn": "Assign and Set Password",
+        "login_email_hint": "Login username is the email above. New users are created; existing users get the password reset.",
+        "password_required": "Initial password must be at least 6 characters",
+        "password_reset_failed": "Failed to set password",
+        "user_not_found": "User email not found",
         "delete_org": "Delete Organization",
         "delete_org_confirm": "Confirm delete (unbinds all members and removes tenant knowledge base)",
         "org_deleted": "Organization deleted",
         "confirm_delete_save": "Confirm Delete",
         "cancel": "Cancel",
-        "selected_org_hint": "Select an organization below, click − on the right, then confirm delete",
-        "delete_minus": "−",
-        "delete_minus_help": "Delete selected organization",
+        "selected_org_hint": "Select an organization, click − Delete at the top right of the list, then confirm",
+        "delete_minus": "− Delete",
+        "delete_minus_help": "Delete the selected organization",
         "pending_delete": "Organization pending delete",
     }
 }
@@ -1057,10 +1063,19 @@ def render_platform_enterprise_section(users):
                 "ID": org_id,
             })
 
-        st.subheader(t()["org_list"])
-        st.caption(t()["selected_org_hint"])
-        st.dataframe(org_rows, use_container_width=True)
+        col_header, col_del = st.columns([5, 1])
+        with col_header:
+            st.subheader(t()["org_list"])
+        with col_del:
+            minus_clicked = st.button(
+                t()["delete_minus"],
+                key="org_minus_btn",
+                type="primary",
+                use_container_width=True,
+                help=t()["delete_minus_help"],
+            )
 
+        st.caption(t()["selected_org_hint"])
         org_ids = [org.get("id") for org in orgs]
 
         def _org_option_label(oid: str) -> str:
@@ -1070,23 +1085,13 @@ def render_platform_enterprise_section(users):
                 f"{item.get('name', '-')} | {item.get('member_count', 0)}/{item.get('max_seats', 0)} | {short_id}"
             )
 
-        col_select, col_minus = st.columns([5, 1])
-        with col_select:
-            selected_org_id = st.selectbox(
-                t()["select_org"],
-                org_ids,
-                format_func=_org_option_label,
-                key="platform_selected_org_id",
-            )
-        with col_minus:
-            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            minus_clicked = st.button(
-                t()["delete_minus"],
-                key="org_minus_btn",
-                type="primary",
-                use_container_width=True,
-                help=t()["delete_minus_help"],
-            )
+        selected_org_id = st.selectbox(
+            t()["select_org"],
+            org_ids,
+            format_func=_org_option_label,
+            key="platform_selected_org_id",
+        )
+        st.dataframe(org_rows, use_container_width=True)
 
         selected_org = org_lookup.get(selected_org_id, {})
 
@@ -1132,8 +1137,10 @@ def render_platform_enterprise_section(users):
                 st.rerun()
 
         st.subheader(t()["assign_user_org"])
-        with st.form("platform_assign_email_form", border=True):
+        with st.form("platform_assign_user_form", border=True):
             assign_email = st.text_input(t()["member_email"], key="platform_assign_email")
+            assign_password = st.text_input(t()["initial_password"], type="password", key="platform_assign_password")
+            st.caption(t()["login_email_hint"])
             assign_role = st.selectbox(
                 t()["member_role"],
                 ["admin", "member"],
@@ -1141,23 +1148,33 @@ def render_platform_enterprise_section(users):
                 key="platform_assign_role_email",
             )
             st.caption(_org_option_label(selected_org_id))
-            submitted = st.form_submit_button(t()["assign_by_email"], type="primary", use_container_width=True)
+            submitted = st.form_submit_button(t()["assign_user_btn"], type="primary", use_container_width=True)
             if submitted:
                 if not assign_email.strip():
                     st.warning("请输入邮箱" if st.session_state.lang == "zh" else "Please enter an email")
+                elif len(assign_password or "") < 6:
+                    st.warning(t()["password_required"])
                 else:
-                    ok, reason = assign_email_to_org(
+                    ok, reason = assign_or_provision_org_user(
                         SUPABASE_URL,
                         SERVICE_HEADERS,
                         assign_email.strip(),
+                        assign_password,
                         selected_org_id,
                         assign_role,
+                        max_seats=int(selected_org.get("max_seats") or 10),
                     )
                     if ok:
                         st.success(t()["user_assigned"])
                         st.rerun()
-                    elif reason == "not_found":
-                        st.error(t()["user_not_found"])
+                    elif reason == "seat_limit":
+                        st.error(t()["seat_limit_reached"])
+                    elif reason == "password_required":
+                        st.warning(t()["password_required"])
+                    elif reason == "password_reset_failed":
+                        st.error(t()["password_reset_failed"])
+                    elif reason == "auth_failed":
+                        st.error("创建账号失败" if st.session_state.lang == "zh" else "Failed to create account")
                     else:
                         st.error(
                             f"绑定失败: {reason}"

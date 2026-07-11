@@ -375,6 +375,77 @@ def find_user_id_by_email(
     return None
 
 
+def set_auth_user_password(
+    supabase_url: str,
+    service_headers: Dict[str, str],
+    user_id: str,
+    password: str,
+) -> tuple[bool, str]:
+    try:
+        response = requests.put(
+            f"{supabase_url}/auth/v1/admin/users/{user_id}",
+            headers=service_headers,
+            json={"password": password},
+            timeout=15,
+        )
+        if response.status_code in (200, 201):
+            return True, ""
+        return False, response.text or f"HTTP {response.status_code}"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def assign_or_provision_org_user(
+    supabase_url: str,
+    service_headers: Dict[str, str],
+    email: str,
+    password: str,
+    organization_id: str,
+    org_role: str,
+    *,
+    max_seats: int = 500,
+) -> tuple[bool, str]:
+    """Create a new auth user or reset password, then bind to organization."""
+    normalized_email = (email or "").strip()
+    if not normalized_email:
+        return False, "email_required"
+    if not password or len(password) < 6:
+        return False, "password_required"
+
+    user_id = find_user_id_by_email(supabase_url, service_headers, normalized_email)
+    if user_id:
+        pwd_ok, pwd_detail = set_auth_user_password(
+            supabase_url, service_headers, user_id, password
+        )
+        if not pwd_ok:
+            return False, pwd_detail or "password_reset_failed"
+        ok, detail = ensure_profile(
+            supabase_url,
+            service_headers,
+            user_id,
+            normalized_email,
+            {
+                "organization_id": organization_id,
+                "org_role": org_role,
+                "subscription_tier": "pro",
+            },
+        )
+        return (ok, "ok" if ok else (detail or "profile_failed"))
+
+    if count_org_members(supabase_url, service_headers, organization_id) >= max_seats:
+        return False, "seat_limit"
+
+    return add_org_member(
+        supabase_url,
+        service_headers,
+        organization_id,
+        normalized_email,
+        password,
+        org_role,
+        max_seats,
+    )
+
+
 def assign_email_to_org(
     supabase_url: str,
     service_headers: Dict[str, str],
