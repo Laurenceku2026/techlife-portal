@@ -1,0 +1,397 @@
+"""Enterprise organizations, members, and tenant knowledge base helpers."""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+from urllib.parse import quote
+
+import requests
+
+KNOWLEDGE_CATEGORIES = ["光学", "机械", "材料", "热学", "电气", "控制"]
+
+
+def _table_url(supabase_url: str, table: str, query: str = "") -> str:
+    base = f"{supabase_url}/rest/v1/{table}"
+    return f"{base}?{query}" if query else base
+
+
+def supabase_select(
+    supabase_url: str,
+    headers: Dict[str, str],
+    table: str,
+    *,
+    select: str = "*",
+    filters: Optional[Dict[str, str]] = None,
+    order: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    parts = [f"select={quote(select, safe='*,()')}"]
+    if filters:
+        for key, value in filters.items():
+            if value is None:
+                parts.append(f"{key}=is.null")
+            else:
+                parts.append(f"{key}=eq.{value}")
+    if order:
+        parts.append(f"order={order}")
+    url = _table_url(supabase_url, table, "&".join(parts))
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 200:
+            return response.json()
+    except Exception:
+        pass
+    return []
+
+
+def supabase_insert(
+    supabase_url: str,
+    headers: Dict[str, str],
+    table: str,
+    data: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    insert_headers = {**headers, "Prefer": "return=representation"}
+    try:
+        response = requests.post(
+            _table_url(supabase_url, table),
+            headers=insert_headers,
+            json=data,
+            timeout=15,
+        )
+        if response.status_code in (200, 201):
+            rows = response.json()
+            return rows[0] if rows else data
+    except Exception:
+        pass
+    return None
+
+
+def supabase_update(
+    supabase_url: str,
+    headers: Dict[str, str],
+    table: str,
+    row_id: str,
+    data: Dict[str, Any],
+    *,
+    id_field: str = "id",
+) -> bool:
+    url = _table_url(supabase_url, table, f"{id_field}=eq.{row_id}")
+    try:
+        response = requests.patch(url, headers=headers, json=data, timeout=15)
+        return response.status_code in (200, 204)
+    except Exception:
+        return False
+
+
+def supabase_delete(
+    supabase_url: str,
+    headers: Dict[str, str],
+    table: str,
+    query: str,
+) -> bool:
+    url = _table_url(supabase_url, table, query)
+    try:
+        response = requests.delete(url, headers=headers, timeout=15)
+        return response.status_code in (200, 204)
+    except Exception:
+        return False
+
+
+def get_full_profile(
+    supabase_url: str,
+    headers: Dict[str, str],
+    user_id: str,
+) -> Dict[str, Any]:
+    default = {
+        "id": user_id,
+        "email": "",
+        "subscription_tier": "free",
+        "free_trials_remaining": 30,
+        "subscription_expires_at": None,
+        "organization_id": None,
+        "org_role": None,
+        "organization_name": None,
+        "max_seats": None,
+    }
+    if not user_id or user_id == "admin":
+        return default
+
+    rows = supabase_select(
+        supabase_url,
+        headers,
+        "profiles",
+        select="id,email,subscription_tier,free_trials_remaining,subscription_expires_at,organization_id,org_role",
+        filters={"id": user_id},
+    )
+    if not rows:
+        rows = supabase_select(
+            supabase_url,
+            headers,
+            "profiles",
+            select="id,email,subscription_tier,free_trials_remaining,subscription_expires_at",
+            filters={"id": user_id},
+        )
+    if not rows:
+        return default
+
+    profile = {**default, **rows[0]}
+    org_id = profile.get("organization_id")
+    if org_id:
+        org_rows = supabase_select(
+            supabase_url,
+            headers,
+            "organizations",
+            select="id,name,max_seats,is_active,contract_expires_at",
+            filters={"id": org_id},
+        )
+        if org_rows:
+            profile["organization_name"] = org_rows[0].get("name")
+            profile["max_seats"] = org_rows[0].get("max_seats")
+            profile["org_is_active"] = org_rows[0].get("is_active", True)
+    return profile
+
+
+def is_enterprise_user(profile: Dict[str, Any]) -> bool:
+    return bool(profile.get("organization_id"))
+
+
+def is_org_admin(profile: Dict[str, Any]) -> bool:
+    return is_enterprise_user(profile) and profile.get("org_role") == "admin"
+
+
+def list_organizations(supabase_url: str, headers: Dict[str, str]) -> List[Dict[str, Any]]:
+    return supabase_select(
+        supabase_url,
+        headers,
+        "organizations",
+        order="name.asc",
+    )
+
+
+def create_organization(
+    supabase_url: str,
+    headers: Dict[str, str],
+    name: str,
+    max_seats: int,
+) -> Optional[Dict[str, Any]]:
+    return supabase_insert(
+        supabase_url,
+        headers,
+        "organizations",
+        {
+            "name": name.strip(),
+            "max_seats": max_seats,
+            "is_active": True,
+            "created_at": datetime.now().isoformat(),
+        },
+    )
+
+
+def update_organization(
+    supabase_url: str,
+    headers: Dict[str, str],
+    org_id: str,
+    data: Dict[str, Any],
+) -> bool:
+    return supabase_update(supabase_url, headers, "organizations", org_id, data)
+
+
+def list_org_members(
+    supabase_url: str,
+    headers: Dict[str, str],
+    organization_id: str,
+) -> List[Dict[str, Any]]:
+    return supabase_select(
+        supabase_url,
+        headers,
+        "profiles",
+        select="id,email,org_role,subscription_tier",
+        filters={"organization_id": organization_id},
+        order="email.asc",
+    )
+
+
+def count_org_members(
+    supabase_url: str,
+    headers: Dict[str, str],
+    organization_id: str,
+) -> int:
+    return len(list_org_members(supabase_url, headers, organization_id))
+
+
+def create_auth_user(
+    supabase_url: str,
+    service_headers: Dict[str, str],
+    email: str,
+    password: str,
+) -> Optional[str]:
+    """Create Supabase Auth user; returns user id or None."""
+    try:
+        response = requests.post(
+            f"{supabase_url}/auth/v1/admin/users",
+            headers=service_headers,
+            json={"email": email, "password": password, "email_confirm": True},
+            timeout=15,
+        )
+        if response.status_code in (200, 201):
+            return response.json().get("id")
+        if response.status_code == 422 and "already" in response.text.lower():
+            lookup = requests.get(
+                f"{supabase_url}/auth/v1/admin/users",
+                headers=service_headers,
+                timeout=15,
+            )
+            if lookup.status_code == 200:
+                data = lookup.json()
+                users = data.get("users", []) if isinstance(data, dict) else data
+                for user in users:
+                    if (user.get("email") or "").lower() == email.lower():
+                        return user.get("id")
+    except Exception:
+        pass
+    return None
+
+
+def ensure_profile(
+    supabase_url: str,
+    headers: Dict[str, str],
+    user_id: str,
+    email: str,
+    data: Dict[str, Any],
+) -> bool:
+    rows = supabase_select(
+        supabase_url,
+        headers,
+        "profiles",
+        filters={"id": user_id},
+    )
+    payload = {"email": email, **data}
+    if rows:
+        return supabase_update(supabase_url, headers, "profiles", user_id, payload)
+    payload["id"] = user_id
+    return supabase_insert(supabase_url, headers, "profiles", payload) is not None
+
+
+def assign_user_to_org(
+    supabase_url: str,
+    headers: Dict[str, str],
+    user_id: str,
+    organization_id: Optional[str],
+    org_role: Optional[str],
+    *,
+    make_enterprise: bool = True,
+) -> bool:
+    data: Dict[str, Any] = {
+        "organization_id": organization_id,
+        "org_role": org_role,
+    }
+    if make_enterprise and organization_id:
+        data["subscription_tier"] = "enterprise"
+    elif not organization_id:
+        data["org_role"] = None
+    return supabase_update(supabase_url, headers, "profiles", user_id, data)
+
+
+def add_org_member(
+    supabase_url: str,
+    service_headers: Dict[str, str],
+    organization_id: str,
+    email: str,
+    password: str,
+    org_role: str = "member",
+    max_seats: int = 10,
+) -> tuple[bool, str]:
+    if count_org_members(supabase_url, service_headers, organization_id) >= max_seats:
+        return False, "seat_limit"
+
+    user_id = create_auth_user(supabase_url, service_headers, email, password)
+    if not user_id:
+        return False, "auth_failed"
+
+    ok = ensure_profile(
+        supabase_url,
+        service_headers,
+        user_id,
+        email,
+        {
+            "organization_id": organization_id,
+            "org_role": org_role,
+            "subscription_tier": "enterprise",
+            "free_trials_remaining": 0,
+        },
+    )
+    return (ok, "ok" if ok else "profile_failed")
+
+
+def remove_org_member(
+    supabase_url: str,
+    headers: Dict[str, str],
+    user_id: str,
+) -> bool:
+    return assign_user_to_org(
+        supabase_url,
+        headers,
+        user_id,
+        organization_id=None,
+        org_role=None,
+        make_enterprise=False,
+    )
+
+
+def list_tenant_knowledge(
+    supabase_url: str,
+    headers: Dict[str, str],
+    organization_id: str,
+) -> List[Dict[str, Any]]:
+    return supabase_select(
+        supabase_url,
+        headers,
+        "knowledge_base",
+        select="id,category,content,content_en,created_at",
+        filters={"scope": "tenant", "organization_id": organization_id},
+        order="id.desc",
+    )
+
+
+def add_tenant_knowledge(
+    supabase_url: str,
+    headers: Dict[str, str],
+    organization_id: str,
+    category: str,
+    content: str,
+) -> bool:
+    result = supabase_insert(
+        supabase_url,
+        headers,
+        "knowledge_base",
+        {
+            "category": category,
+            "content": content,
+            "content_en": content,
+            "scope": "tenant",
+            "organization_id": organization_id,
+            "created_at": datetime.now().isoformat(),
+        },
+    )
+    return result is not None
+
+
+def delete_tenant_knowledge(
+    supabase_url: str,
+    headers: Dict[str, str],
+    record_id: int,
+    organization_id: str,
+) -> bool:
+    rows = supabase_select(
+        supabase_url,
+        headers,
+        "knowledge_base",
+        filters={"id": str(record_id), "organization_id": organization_id, "scope": "tenant"},
+    )
+    if not rows:
+        return False
+    return supabase_delete(
+        supabase_url,
+        headers,
+        "knowledge_base",
+        f"id=eq.{record_id}&organization_id=eq.{organization_id}&scope=eq.tenant",
+    )
