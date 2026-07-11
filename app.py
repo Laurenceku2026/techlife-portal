@@ -23,6 +23,7 @@ from enterprise_utils import (
     list_tenant_knowledge,
     remove_org_member,
     update_organization,
+    verify_login_credentials,
     _parse_auth_users,
 )
 
@@ -213,7 +214,8 @@ TEXTS = {
         "assign_user_btn": "绑定并设置密码",
         "login_email_hint": "登录用户名为上方邮箱；新用户将自动创建账号，已有用户将重置为上述初始密码",
         "password_required": "请设置至少6位初始密码",
-        "password_reset_failed": "密码设置失败",
+        "login_verify_failed": "账号已绑定，但登录验证未通过，请检查 Supabase 配置或联系技术支持",
+        "login_verify_ok": "登录验证通过，请用该邮箱和初始密码在门户登录",
         "user_not_found": "未找到该邮箱用户",
         "delete_org": "删除企业",
         "delete_org_confirm": "确认删除该企业（将解除所有成员绑定并删除企业知识库）",
@@ -339,6 +341,8 @@ Let AI become your Chief Quality Engineer.
         "login_email_hint": "Login username is the email above. New users are created; existing users get the password reset.",
         "password_required": "Initial password must be at least 6 characters",
         "password_reset_failed": "Failed to set password",
+        "login_verify_failed": "User bound, but login verification failed. Check Supabase settings or contact support.",
+        "login_verify_ok": "Login verified. Use this email and the initial password on the portal.",
         "user_not_found": "User email not found",
         "delete_org": "Delete Organization",
         "delete_org_confirm": "Confirm delete (unbinds all members and removes tenant knowledge base)",
@@ -645,17 +649,32 @@ def render_login_form():
             
             if submitted and email and password:
                 try:
+                    login_email = email.strip()
                     auth_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
-                    response = requests.post(auth_url, headers=AUTH_HEADERS, json={"email": email, "password": password})
-                    
+                    response = requests.post(
+                        auth_url,
+                        headers=AUTH_HEADERS,
+                        json={"email": login_email, "password": password},
+                    )
+
                     if response.status_code == 200:
                         data = response.json()
                         st.session_state.authenticated = True
                         st.session_state.user_id = data.get("user", {}).get("id")
-                        st.session_state.user_email = email
+                        st.session_state.user_email = login_email
                         st.rerun()
                     else:
-                        st.error(f"登录失败: {response.json().get('msg', '未知错误')}")
+                        try:
+                            err_body = response.json()
+                            err_msg = (
+                                err_body.get("error_description")
+                                or err_body.get("msg")
+                                or err_body.get("message")
+                                or "未知错误"
+                            )
+                        except ValueError:
+                            err_msg = response.text or "未知错误"
+                        st.error(f"登录失败: {err_msg}")
                 except Exception as e:
                     st.error(f"登录失败: {e}")
         
@@ -1165,7 +1184,16 @@ def render_platform_enterprise_section(users):
                         max_seats=int(selected_org.get("max_seats") or 10),
                     )
                     if ok:
-                        st.success(t()["user_assigned"])
+                        verified, verify_detail = verify_login_credentials(
+                            SUPABASE_URL,
+                            SUPABASE_ANON_KEY,
+                            assign_email.strip(),
+                            assign_password,
+                        )
+                        if verified:
+                            st.success(f"{t()['user_assigned']} — {t()['login_verify_ok']}")
+                        else:
+                            st.warning(f"{t()['login_verify_failed']}: {verify_detail}")
                         st.rerun()
                     elif reason == "seat_limit":
                         st.error(t()["seat_limit_reached"])

@@ -299,16 +299,7 @@ def create_auth_user(
             except ValueError:
                 pass
         if response.status_code == 422 and "already" in response.text.lower():
-            lookup = requests.get(
-                f"{supabase_url}/auth/v1/admin/users",
-                headers=service_headers,
-                timeout=15,
-            )
-            if lookup.status_code == 200:
-                data = lookup.json()
-                for user in _parse_auth_users(data):
-                    if (user.get("email") or "").lower() == email.lower():
-                        return user.get("id")
+            return find_auth_user_id_by_email(supabase_url, service_headers, email)
     except Exception:
         pass
     return None
@@ -339,7 +330,7 @@ def ensure_profile(
     return False, "insert_failed"
 
 
-def find_user_id_by_email(
+def find_auth_user_id_by_email(
     supabase_url: str,
     service_headers: Dict[str, str],
     email: str,
@@ -348,26 +339,47 @@ def find_user_id_by_email(
     if not normalized:
         return None
 
-    try:
-        response = requests.get(
-            f"{supabase_url}/auth/v1/admin/users",
-            headers=service_headers,
-            timeout=15,
-        )
-        if response.status_code == 200:
-            data = response.json()
-            for user in _parse_auth_users(data):
+    page = 1
+    per_page = 200
+    while page <= 20:
+        try:
+            response = requests.get(
+                f"{supabase_url}/auth/v1/admin/users",
+                headers=service_headers,
+                params={"page": page, "per_page": per_page},
+                timeout=15,
+            )
+            if response.status_code != 200:
+                break
+            users = _parse_auth_users(response.json())
+            if not users:
+                break
+            for user in users:
                 if (user.get("email") or "").strip().lower() == normalized:
                     return user.get("id")
-    except Exception:
-        pass
+            if len(users) < per_page:
+                break
+            page += 1
+        except Exception:
+            break
+    return None
+
+
+def find_user_id_by_email(
+    supabase_url: str,
+    service_headers: Dict[str, str],
+    email: str,
+) -> Optional[str]:
+    user_id = find_auth_user_id_by_email(supabase_url, service_headers, email)
+    if user_id:
+        return user_id
 
     rows = supabase_select(
         supabase_url,
         service_headers,
         "profiles",
         select="id,email",
-        filters={"email": email.strip()},
+        filters={"email": (email or "").strip()},
     )
     if rows:
         return rows[0].get("id")
@@ -385,12 +397,45 @@ def set_auth_user_password(
         response = requests.put(
             f"{supabase_url}/auth/v1/admin/users/{user_id}",
             headers=service_headers,
-            json={"password": password},
+            json={"password": password, "email_confirm": True},
             timeout=15,
         )
         if response.status_code in (200, 201):
             return True, ""
         return False, response.text or f"HTTP {response.status_code}"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def verify_login_credentials(
+    supabase_url: str,
+    anon_key: str,
+    email: str,
+    password: str,
+) -> tuple[bool, str]:
+    headers = {
+        "apikey": anon_key,
+        "Content-Type": "application/json",
+    }
+    try:
+        response = requests.post(
+            f"{supabase_url}/auth/v1/token?grant_type=password",
+            headers=headers,
+            json={"email": (email or "").strip(), "password": password},
+            timeout=15,
+        )
+        if response.status_code == 200:
+            return True, ""
+        try:
+            body = response.json()
+            return False, (
+                body.get("error_description")
+                or body.get("msg")
+                or body.get("message")
+                or response.text
+            )
+        except ValueError:
+            return False, response.text or f"HTTP {response.status_code}"
     except Exception as exc:
         return False, str(exc)
 
@@ -405,45 +450,40 @@ def assign_or_provision_org_user(
     *,
     max_seats: int = 500,
 ) -> tuple[bool, str]:
-    """Create a new auth user or reset password, then bind to organization."""
+    """Create or locate auth user, always set password, then bind to organization."""
     normalized_email = (email or "").strip()
     if not normalized_email:
         return False, "email_required"
     if not password or len(password) < 6:
         return False, "password_required"
 
-    user_id = find_user_id_by_email(supabase_url, service_headers, normalized_email)
-    if user_id:
-        pwd_ok, pwd_detail = set_auth_user_password(
-            supabase_url, service_headers, user_id, password
-        )
-        if not pwd_ok:
-            return False, pwd_detail or "password_reset_failed"
-        ok, detail = ensure_profile(
-            supabase_url,
-            service_headers,
-            user_id,
-            normalized_email,
-            {
-                "organization_id": organization_id,
-                "org_role": org_role,
-                "subscription_tier": "pro",
-            },
-        )
-        return (ok, "ok" if ok else (detail or "profile_failed"))
+    user_id = find_auth_user_id_by_email(supabase_url, service_headers, normalized_email)
+    if not user_id:
+        if count_org_members(supabase_url, service_headers, organization_id) >= max_seats:
+            return False, "seat_limit"
+        user_id = create_auth_user(supabase_url, service_headers, normalized_email, password)
+        if not user_id:
+            return False, "auth_failed"
 
-    if count_org_members(supabase_url, service_headers, organization_id) >= max_seats:
-        return False, "seat_limit"
+    pwd_ok, pwd_detail = set_auth_user_password(
+        supabase_url, service_headers, user_id, password
+    )
+    if not pwd_ok:
+        return False, pwd_detail or "password_reset_failed"
 
-    return add_org_member(
+    ok, detail = ensure_profile(
         supabase_url,
         service_headers,
-        organization_id,
+        user_id,
         normalized_email,
-        password,
-        org_role,
-        max_seats,
+        {
+            "organization_id": organization_id,
+            "org_role": org_role,
+            "subscription_tier": "pro",
+            "free_trials_remaining": 0,
+        },
     )
+    return (ok, "ok" if ok else (detail or "profile_failed"))
 
 
 def assign_email_to_org(
@@ -506,15 +546,24 @@ def add_org_member(
     if count_org_members(supabase_url, service_headers, organization_id) >= max_seats:
         return False, "seat_limit"
 
-    user_id = create_auth_user(supabase_url, service_headers, email, password)
+    normalized_email = (email or "").strip()
+    user_id = find_auth_user_id_by_email(supabase_url, service_headers, normalized_email)
+    if not user_id:
+        user_id = create_auth_user(supabase_url, service_headers, normalized_email, password)
     if not user_id:
         return False, "auth_failed"
+
+    pwd_ok, pwd_detail = set_auth_user_password(
+        supabase_url, service_headers, user_id, password
+    )
+    if not pwd_ok:
+        return False, pwd_detail or "password_reset_failed"
 
     ok, reason = ensure_profile(
         supabase_url,
         service_headers,
         user_id,
-        email,
+        normalized_email,
         {
             "organization_id": organization_id,
             "org_role": org_role,
