@@ -645,6 +645,9 @@ ORG_ADMIN_SECTION_WIDGET_KEYS = {
     "members": (
         "org_remove_select",
         "org_remove_btn",
+        "org_member_email",
+        "org_member_password",
+        "org_member_role",
     ),
     "kb": (
         "kb_download_template_btn",
@@ -654,12 +657,20 @@ ORG_ADMIN_SECTION_WIDGET_KEYS = {
         "kb_import_btn",
         "org_kb_delete_select",
         "org_kb_delete_btn",
+        "org_kb_add_category",
+        "org_kb_add_content",
     ),
     "settings": (
         "org_admin_logo_uploader",
         "org_admin_save_logo",
         "org_admin_remove_logo",
     ),
+}
+
+ORG_ADMIN_SECTION_KEY_PREFIXES = {
+    "members": ("org_member_", "org_remove_", "org_add_member"),
+    "kb": ("kb_", "org_kb_"),
+    "settings": ("org_admin_logo", "org_admin_save", "org_admin_remove"),
 }
 
 ORG_ADMIN_SECTION_FORM_PREFIXES = {
@@ -671,6 +682,10 @@ ORG_ADMIN_SECTION_FORM_PREFIXES = {
 def _clear_org_admin_section_keys(section: str):
     for key in ORG_ADMIN_SECTION_WIDGET_KEYS.get(section, ()):
         st.session_state.pop(key, None)
+    for prefix in ORG_ADMIN_SECTION_KEY_PREFIXES.get(section, ()):
+        for key in list(st.session_state.keys()):
+            if str(key).startswith(prefix):
+                st.session_state.pop(key, None)
     form_prefix = ORG_ADMIN_SECTION_FORM_PREFIXES.get(section)
     if form_prefix:
         for key in list(st.session_state.keys()):
@@ -678,13 +693,19 @@ def _clear_org_admin_section_keys(section: str):
                 st.session_state.pop(key, None)
 
 
-def _sync_org_admin_section(selected_section: str):
+def _on_org_admin_section_change():
     previous_section = st.session_state.get("_org_admin_active_section")
-    if previous_section == selected_section:
-        return
-    if previous_section:
-        _clear_org_admin_section_keys(previous_section)
-    st.session_state._org_admin_active_section = selected_section
+    current_section = st.session_state.get("org_admin_section")
+    if previous_section and current_section and previous_section != current_section:
+        st.session_state._org_admin_section_to_clear = previous_section
+    if current_section:
+        st.session_state._org_admin_active_section = current_section
+
+
+def apply_pending_org_admin_section_clear():
+    section_to_clear = st.session_state.pop("_org_admin_section_to_clear", None)
+    if section_to_clear:
+        _clear_org_admin_section_keys(section_to_clear)
 
 
 def _clear_org_admin_widget_keys():
@@ -1343,12 +1364,12 @@ def render_org_members_tab(profile):
             }
             for m in members
         ]
-        st.dataframe(member_rows, use_container_width=True)
+        st.table(member_rows)
 
     with st.form("org_add_member_form", border=True):
-        new_email = st.text_input(t()["member_email"])
-        new_password = st.text_input(t()["initial_password"], type="password")
-        new_role = st.selectbox(t()["member_role"], ["member", "admin"])
+        new_email = st.text_input(t()["member_email"], key="org_member_email")
+        new_password = st.text_input(t()["initial_password"], type="password", key="org_member_password")
+        new_role = st.selectbox(t()["member_role"], ["member", "admin"], key="org_member_role")
         submitted = st.form_submit_button(t()["add_member"], type="primary", use_container_width=True)
         if submitted:
             if not new_email or not new_password:
@@ -1404,6 +1425,8 @@ def render_tenant_kb_panel(
         "delete_select": "org_kb_delete_select",
         "delete_btn": "org_kb_delete_btn",
         "add_form": "org_kb_add_form",
+        "add_category": "org_kb_add_category",
+        "add_content": "org_kb_add_content",
     }
     if widget_keys:
         keys.update(widget_keys)
@@ -1506,8 +1529,12 @@ def render_tenant_kb_panel(
                 st.rerun()
 
     with st.form(keys["add_form"], border=True):
-        category = st.selectbox(t()["kb_category"], KNOWLEDGE_CATEGORIES)
-        content = st.text_area(t()["kb_content"])
+        category = st.selectbox(
+            t()["kb_category"],
+            KNOWLEDGE_CATEGORIES,
+            key=keys["add_category"],
+        )
+        content = st.text_area(t()["kb_content"], key=keys["add_content"])
         submitted = st.form_submit_button(t()["kb_add"], type="primary", use_container_width=True)
         if submitted and content.strip():
             to_en, to_zh = _kb_translators()
@@ -1559,8 +1586,8 @@ def render_org_admin_panel():
         horizontal=True,
         key="org_admin_section",
         label_visibility="collapsed",
+        on_change=_on_org_admin_section_change,
     )
-    _sync_org_admin_section(selected_section)
     if selected_section == "members":
         render_org_members_tab(profile)
     elif selected_section == "kb":
@@ -2014,6 +2041,7 @@ def main():
         apply_pending_guest_reset()
         apply_pending_admin_login()
         apply_pending_org_admin_entry()
+        apply_pending_org_admin_section_clear()
         apply_pending_org_admin_exit()
         if not st.session_state.get("authenticated"):
             st.session_state.admin_mode = False
