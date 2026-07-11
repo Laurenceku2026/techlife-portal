@@ -540,9 +540,10 @@ def render_sidebar():
         st.title(sidebar_title)
         st.subheader(t()["about_header"])
         st.markdown(t()["about_text"])
-        st.divider()
-        st.subheader(t()["contact_header"])
-        st.markdown(t()["contact_email"])
+        if not enterprise:
+            st.divider()
+            st.subheader(t()["contact_header"])
+            st.markdown(t()["contact_email"])
         
         if st.session_state.authenticated:
             st.divider()
@@ -561,7 +562,7 @@ def render_sidebar():
                 total_usage = get_user_total_usage(st.session_state.user_id)
 
                 if enterprise:
-                    st.caption(f"🏢 {t()['enterprise_plan']}")
+                    pass
                 else:
                     st.caption(f"📋 {t()['subscription']}: {'💎 Pro' if tier == 'pro' else '🔒 Free'}")
                     if tier == "free":
@@ -981,19 +982,23 @@ def render_main_app():
         remaining = profile.get("free_trials_remaining", 30)
         total_usage = get_user_total_usage(st.session_state.user_id)
         enterprise = is_enterprise_user(profile)
+        org_name = profile.get("organization_name") if enterprise else None
 
-        col_welcome, col_org, col_refresh = st.columns([5, 2, 1])
+        if org_name:
+            st.markdown(
+                (
+                    f"<h1 style='text-align: center; margin: 0 0 1rem 0; font-weight: 700;'>"
+                    f"🏢 {org_name}</h1>"
+                ),
+                unsafe_allow_html=True,
+            )
+
+        col_welcome, col_refresh = st.columns([11, 1])
         with col_welcome:
             st.markdown(
                 f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {st.session_state.user_email}</h3>",
                 unsafe_allow_html=True,
             )
-        with col_org:
-            if enterprise and profile.get("organization_name"):
-                st.markdown(
-                    f"<p style='text-align: right; margin:0; font-weight:600;'>🏢 {profile['organization_name']}</p>",
-                    unsafe_allow_html=True,
-                )
         with col_refresh:
             if st.button("🔄", key="refresh_btn", help="刷新数据", use_container_width=True):
                 if "payment_url" in st.session_state:
