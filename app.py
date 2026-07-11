@@ -4,6 +4,7 @@ import stripe
 from datetime import datetime, timedelta
 
 from portal_auth import build_app_launch_url
+from portal_enterprise_ui import enterprise_brand_markup
 from kb_translate import bilingualize_kb_content, make_kb_translators
 from enterprise_utils import (
     KNOWLEDGE_CATEGORIES,
@@ -620,17 +621,10 @@ def render_enterprise_branding(profile):
         return
 
     logo_url = profile.get("organization_logo_url")
-    col_left, col_center, col_right = st.columns([1, 2, 1])
-    with col_center:
-        if logo_url:
-            try:
-                st.image(logo_url, width=180)
-            except Exception:
-                pass
-        st.markdown(
-            f"<h1 style='text-align: center; margin: 0 0 1rem 0; font-weight: 700;'>{org_name}</h1>",
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        enterprise_brand_markup(org_name, logo_url, variant="main"),
+        unsafe_allow_html=True,
+    )
 
 
 def _handle_logo_upload_result(ok: bool, reason: str):
@@ -725,10 +719,14 @@ def render_sidebar():
         enterprise = bool(profile and is_enterprise_user(profile))
 
         if enterprise:
-            sidebar_title = profile.get("organization_name") or t()["enterprise_plan"]
+            org_name = profile.get("organization_name") or t()["enterprise_plan"]
+            logo_url = profile.get("organization_logo_url")
+            st.markdown(
+                enterprise_brand_markup(org_name, logo_url, variant="sidebar"),
+                unsafe_allow_html=True,
+            )
         else:
-            sidebar_title = t()["sidebar_title"]
-        st.title(sidebar_title)
+            st.title(t()["sidebar_title"])
         st.subheader(t()["about_header"])
         st.markdown(t()["about_text"])
         if not enterprise:
