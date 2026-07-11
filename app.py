@@ -211,7 +211,7 @@ TEXTS = {
         "kb_add": "添加条目",
         "kb_delete": "删除",
         "kb_db_title": "{org_name} · 独立知识数据库",
-        "kb_excel_hint": "可先下载空白模板，在本地填写后上传 Excel（.xlsx）导入。",
+        "kb_excel_hint": "第1行为企业数据库标题，第3行为分类表头（含「其他/Other」），经验从第4行起按列填写。可先下载空白模板，本地填写后上传。",
         "kb_download_template": "下载空白模板",
         "kb_download_data": "导出当前数据",
         "kb_upload_excel": "上传 Excel 文件",
@@ -220,7 +220,7 @@ TEXTS = {
         "kb_imported": "已导入 {count} 条记录",
         "kb_import_failed": "导入失败",
         "kb_invalid_excel": "Excel 文件格式无效",
-        "kb_missing_columns": "缺少必要列：分类、经验内容",
+        "kb_missing_columns": "缺少第3行分类表头（光学…其他/Other）",
         "kb_no_valid_rows": "未找到可导入的有效数据行",
         "user_mgmt_tab": "用户管理",
         "seat_limit_reached": "已达席位上限",
@@ -367,7 +367,7 @@ Let AI become your Chief Quality Engineer.
         "kb_add": "Add Entry",
         "kb_delete": "Delete",
         "kb_db_title": "{org_name} · Dedicated Knowledge Database",
-        "kb_excel_hint": "Download the blank template, fill it locally, then upload the Excel (.xlsx) file to import.",
+        "kb_excel_hint": "Row 1 is the title, row 3 has category headers (including Other), and knowledge starts from row 4 by column. Download the blank template, fill locally, then upload.",
         "kb_download_template": "Download Blank Template",
         "kb_download_data": "Export Current Data",
         "kb_upload_excel": "Upload Excel File",
@@ -376,7 +376,7 @@ Let AI become your Chief Quality Engineer.
         "kb_imported": "Imported {count} record(s)",
         "kb_import_failed": "Import failed",
         "kb_invalid_excel": "Invalid Excel file",
-        "kb_missing_columns": "Required columns missing: Category, Content",
+        "kb_missing_columns": "Required wide-format headers missing on row 3 (Optical … Other)",
         "kb_no_valid_rows": "No valid rows found to import",
         "user_mgmt_tab": "User Management",
         "seat_limit_reached": "Seat limit reached",
@@ -1206,7 +1206,7 @@ def render_org_kb_tab(profile):
     with col_tpl:
         st.download_button(
             t()["kb_download_template"],
-            data=build_kb_template_excel(lang),
+            data=build_kb_template_excel(org_name, lang),
             file_name=template_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
@@ -1215,7 +1215,7 @@ def render_org_kb_tab(profile):
     with col_export:
         st.download_button(
             t()["kb_download_data"],
-            data=build_kb_export_excel(entries, lang),
+            data=build_kb_export_excel(entries, org_name, lang),
             file_name=export_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,

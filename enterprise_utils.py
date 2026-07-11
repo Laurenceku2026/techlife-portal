@@ -8,7 +8,23 @@ from urllib.parse import quote
 
 import requests
 
-KNOWLEDGE_CATEGORIES = ["光学", "机械", "材料", "热学", "电气", "控制"]
+KNOWLEDGE_CATEGORIES = ["光学", "机械", "材料", "热学", "电气", "控制", "其他"]
+KB_CATEGORY_HEADERS = [
+    "光学 / Optical",
+    "机械 / Mechanical",
+    "材料 / Material",
+    "热学 / Thermal",
+    "电气 / Electrical",
+    "控制 / Control",
+    "其他 / Other",
+]
+KB_HEADER_ROW = 3
+KB_DATA_START_ROW = 4
+KB_INSTRUCTION = (
+    "请在下面各列类别中添加您的经验，每条经验占一格，经验之间不要留空 / "
+    "Please add your knowledge in the category below, each knowledge is in one cell "
+    "and no empty cell in between"
+)
 LOGO_MAX_BYTES = 500_000
 LOGO_ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 
@@ -761,56 +777,212 @@ def delete_tenant_knowledge(
     )
 
 
-KB_EXCEL_COLUMNS_ZH = ["分类", "经验内容", "经验内容(英文)"]
-KB_EXCEL_COLUMNS_EN = ["Category", "Content", "Content (EN)"]
-
-_KB_COLUMN_ALIASES = {
-    "category": {"分类", "category", "Category"},
-    "content": {"经验内容", "content", "Content"},
-    "content_en": {"经验内容(英文)", "content_en", "Content (EN)", "Content_EN"},
-}
+def _kb_workbook_title(org_name: str, lang: str) -> str:
+    if lang == "en":
+        return f"{org_name} · Enterprise Knowledge Database"
+    return f"{org_name} · 企业数据库"
 
 
-def _kb_excel_columns(lang: str) -> List[str]:
-    return KB_EXCEL_COLUMNS_EN if lang == "en" else KB_EXCEL_COLUMNS_ZH
+def _kb_sheet_title(lang: str) -> str:
+    return "Knowledge" if lang == "en" else "知识库"
 
 
-def _normalize_kb_column(name: str) -> Optional[str]:
-    cleaned = (name or "").strip()
-    for field, aliases in _KB_COLUMN_ALIASES.items():
-        if cleaned in aliases:
-            return field
+def _parse_category_label(label: Any) -> Optional[str]:
+    if label is None:
+        return None
+    text = str(label).strip()
+    if not text or text.lower() == "nan":
+        return None
+
+    if text in KNOWLEDGE_CATEGORIES:
+        return text
+
+    for category, header in zip(KNOWLEDGE_CATEGORIES, KB_CATEGORY_HEADERS):
+        if text == header:
+            return category
+        if text.lower() == header.lower():
+            return category
+
+    if "/" in text:
+        zh_part = text.split("/", 1)[0].strip()
+        if zh_part in KNOWLEDGE_CATEGORIES:
+            return zh_part
+        en_part = text.split("/", 1)[1].strip().lower()
+        en_map = {
+            "optical": "光学",
+            "mechanical": "机械",
+            "material": "材料",
+            "thermal": "热学",
+            "electrical": "电气",
+            "control": "控制",
+            "other": "其他",
+        }
+        if en_part in en_map:
+            return en_map[en_part]
+
+    lowered = text.lower()
+    if lowered == "other":
+        return "其他"
     return None
 
 
-def build_kb_template_excel(lang: str = "zh") -> bytes:
+def _write_kb_workbook(
+    org_name: str,
+    lang: str,
+    entries_by_category: Optional[Dict[str, List[str]]] = None,
+) -> bytes:
+    import io
+
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = _kb_sheet_title(lang)
+    worksheet.cell(1, 1, _kb_workbook_title(org_name, lang))
+    worksheet.cell(2, 1, KB_INSTRUCTION)
+
+    for col_idx, header in enumerate(KB_CATEGORY_HEADERS, start=1):
+        worksheet.cell(KB_HEADER_ROW, col_idx, header)
+
+    if entries_by_category:
+        max_rows = max((len(values) for values in entries_by_category.values()), default=0)
+        for row_offset in range(max_rows):
+            row_idx = KB_DATA_START_ROW + row_offset
+            for col_idx, category in enumerate(KNOWLEDGE_CATEGORIES, start=1):
+                values = entries_by_category.get(category, [])
+                if row_offset < len(values):
+                    worksheet.cell(row_idx, col_idx, values[row_offset])
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def build_kb_template_excel(org_name: str, lang: str = "zh") -> bytes:
+    return _write_kb_workbook(org_name, lang)
+
+
+def build_kb_export_excel(
+    entries: List[Dict[str, Any]],
+    org_name: str,
+    lang: str = "zh",
+) -> bytes:
+    grouped: Dict[str, List[str]] = {category: [] for category in KNOWLEDGE_CATEGORIES}
+    for entry in entries:
+        category = _parse_category_label(entry.get("category")) or str(entry.get("category", "")).strip()
+        content = str(entry.get("content", "")).strip()
+        if not category or not content:
+            continue
+        if category not in grouped:
+            grouped[category] = []
+        grouped[category].append(content)
+    return _write_kb_workbook(org_name, lang, grouped)
+
+
+def _load_kb_worksheet(file_bytes: bytes):
+    import io
+
+    from openpyxl import load_workbook
+
+    return load_workbook(io.BytesIO(file_bytes)).active
+
+
+def _find_kb_header_row(worksheet) -> Optional[int]:
+    for row_idx in range(1, 8):
+        for col_idx in range(1, 20):
+            value = worksheet.cell(row_idx, col_idx).value
+            if value and _parse_category_label(value):
+                matched = 0
+                for scan_col in range(1, 20):
+                    if _parse_category_label(worksheet.cell(row_idx, scan_col).value):
+                        matched += 1
+                if matched >= 3:
+                    return row_idx
+    return None
+
+
+def _parse_wide_kb_worksheet(worksheet) -> Optional[List[Dict[str, str]]]:
+    header_row = _find_kb_header_row(worksheet)
+    if not header_row:
+        return None
+
+    categories_by_col: Dict[int, str] = {}
+    for col_idx in range(1, worksheet.max_column + 1):
+        category = _parse_category_label(worksheet.cell(header_row, col_idx).value)
+        if category:
+            categories_by_col[col_idx] = category
+
+    if len(categories_by_col) < 3:
+        return None
+
+    rows_to_import: List[Dict[str, str]] = []
+    for row_idx in range(header_row + 1, worksheet.max_row + 1):
+        for col_idx, category in categories_by_col.items():
+            raw_value = worksheet.cell(row_idx, col_idx).value
+            if raw_value is None:
+                continue
+            content = str(raw_value).strip()
+            if not content or content.lower() == "nan":
+                continue
+            rows_to_import.append(
+                {
+                    "category": category,
+                    "content": content,
+                    "content_en": content,
+                }
+            )
+    return rows_to_import
+
+
+def _parse_legacy_kb_dataframe(file_bytes: bytes) -> Optional[List[Dict[str, str]]]:
     import io
 
     import pandas as pd
 
-    columns = _kb_excel_columns(lang)
-    buffer = io.BytesIO()
-    pd.DataFrame(columns=columns).to_excel(buffer, index=False, engine="openpyxl")
-    return buffer.getvalue()
+    legacy_aliases = {
+        "category": {"分类", "category", "Category"},
+        "content": {"经验内容", "content", "Content"},
+        "content_en": {"经验内容(英文)", "content_en", "Content (EN)", "Content_EN"},
+    }
 
+    try:
+        frame = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl")
+    except Exception:
+        return None
 
-def build_kb_export_excel(entries: List[Dict[str, Any]], lang: str = "zh") -> bytes:
-    import io
+    if frame.empty:
+        return None
 
-    import pandas as pd
+    column_map: Dict[str, str] = {}
+    for column in frame.columns:
+        cleaned = str(column).strip()
+        for field, aliases in legacy_aliases.items():
+            if cleaned in aliases:
+                column_map[field] = column
 
-    columns = _kb_excel_columns(lang)
-    rows = [
-        {
-            columns[0]: entry.get("category", ""),
-            columns[1]: entry.get("content", ""),
-            columns[2]: entry.get("content_en", "") or entry.get("content", ""),
-        }
-        for entry in entries
-    ]
-    buffer = io.BytesIO()
-    pd.DataFrame(rows, columns=columns).to_excel(buffer, index=False, engine="openpyxl")
-    return buffer.getvalue()
+    if "category" not in column_map or "content" not in column_map:
+        return None
+
+    rows_to_import: List[Dict[str, str]] = []
+    for _, row in frame.iterrows():
+        category = _parse_category_label(row.get(column_map["category"])) or str(
+            row.get(column_map["category"], "")
+        ).strip()
+        content = str(row.get(column_map["content"], "")).strip()
+        if not content:
+            continue
+        content_en_col = column_map.get("content_en")
+        content_en = str(row.get(content_en_col, "")).strip() if content_en_col else content
+        if not content_en:
+            content_en = content
+        rows_to_import.append(
+            {
+                "category": category or KNOWLEDGE_CATEGORIES[0],
+                "content": content,
+                "content_en": content_en,
+            }
+        )
+    return rows_to_import or None
 
 
 def delete_all_tenant_knowledge(
@@ -836,51 +1008,23 @@ def import_tenant_knowledge_excel(
     *,
     replace_existing: bool = False,
 ) -> tuple[int, str]:
-    import io
-
-    import pandas as pd
-
     if not organization_id:
         return 0, "missing_org_id"
     if not file_bytes:
         return 0, "empty_file"
 
+    rows_to_import: Optional[List[Dict[str, str]]] = None
     try:
-        frame = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl")
+        worksheet = _load_kb_worksheet(file_bytes)
+        rows_to_import = _parse_wide_kb_worksheet(worksheet)
     except Exception as exc:
         return 0, f"invalid_excel:{exc}"
 
-    if frame.empty:
-        return 0, "no_rows"
+    if rows_to_import is None:
+        rows_to_import = _parse_legacy_kb_dataframe(file_bytes)
 
-    column_map: Dict[str, str] = {}
-    for column in frame.columns:
-        normalized = _normalize_kb_column(str(column))
-        if normalized:
-            column_map[normalized] = column
-
-    if "category" not in column_map or "content" not in column_map:
+    if rows_to_import is None:
         return 0, "missing_columns"
-
-    rows_to_import: List[Dict[str, str]] = []
-    for _, row in frame.iterrows():
-        category = str(row.get(column_map["category"], "")).strip()
-        content = str(row.get(column_map["content"], "")).strip()
-        if not category and not content:
-            continue
-        if not content:
-            continue
-        content_en_col = column_map.get("content_en")
-        content_en = str(row.get(content_en_col, "")).strip() if content_en_col else content
-        if not content_en:
-            content_en = content
-        rows_to_import.append(
-            {
-                "category": category or KNOWLEDGE_CATEGORIES[0],
-                "content": content,
-                "content_en": content_en,
-            }
-        )
 
     if not rows_to_import:
         return 0, "no_valid_rows"
