@@ -217,7 +217,9 @@ TEXTS = {
         "org_deleted": "企业已删除",
         "confirm_delete_save": "确认删除",
         "cancel": "取消",
-        "selected_org_hint": "在表格中选中企业后，点右上角 − 删除，再点确认删除",
+        "selected_org_hint": "在下拉框选择要操作的企业，点右侧 − 删除，再点确认删除",
+        "delete_minus": "−",
+        "delete_minus_help": "删除选中的企业",
         "pending_delete": "待删除企业",
     },
     "en": {
@@ -337,7 +339,9 @@ Let AI become your Chief Quality Engineer.
         "org_deleted": "Organization deleted",
         "confirm_delete_save": "Confirm Delete",
         "cancel": "Cancel",
-        "selected_org_hint": "Select an organization, click −, then confirm delete",
+        "selected_org_hint": "Select an organization below, click − on the right, then confirm delete",
+        "delete_minus": "−",
+        "delete_minus_help": "Delete selected organization",
         "pending_delete": "Organization pending delete",
     }
 }
@@ -413,12 +417,38 @@ def handle_stripe_callback():
         # 清除 URL 参数
         st.query_params.clear()
 
+def reset_to_guest_session():
+    st.session_state.admin_mode = False
+    st.session_state.org_admin_mode = False
+    st.session_state.authenticated = False
+    st.session_state.user_id = None
+    st.session_state.user_email = None
+    st.session_state.show_admin_login = False
+    st.session_state.pending_delete_org_id = None
+    if "payment_url" in st.session_state:
+        del st.session_state.payment_url
+
+
+def safe_get_profile(user_id: str):
+    try:
+        return get_user_profile(user_id)
+    except Exception:
+        return {
+            "subscription_tier": "free",
+            "free_trials_remaining": 30,
+            "subscription_expires_at": None,
+            "organization_id": None,
+            "org_role": None,
+            "organization_name": None,
+        }
+
+
 # ==================== UI 组件 ====================
 def render_sidebar():
     with st.sidebar:
         profile = None
-        if st.session_state.authenticated and st.session_state.user_id != "admin":
-            profile = get_user_profile(st.session_state.user_id)
+        if st.session_state.authenticated and st.session_state.user_id not in (None, "admin"):
+            profile = safe_get_profile(st.session_state.user_id)
         enterprise = bool(profile and is_enterprise_user(profile))
 
         if enterprise:
@@ -434,109 +464,107 @@ def render_sidebar():
         
         if st.session_state.authenticated:
             st.divider()
-            st.markdown(f"**👤 {st.session_state.user_email}**")
-            if profile is None:
-                profile = get_user_profile(st.session_state.user_id)
-            tier = profile.get("subscription_tier", "free")
-            remaining = profile.get("free_trials_remaining", 30)
-            total_usage = get_user_total_usage(st.session_state.user_id)
-            
-            if enterprise:
-                st.caption(f"🏢 {t()['enterprise_plan']}")
+            st.markdown(f"**👤 {st.session_state.user_email or ''}**")
+
+            if st.session_state.user_id == "admin":
+                st.caption("平台管理员" if st.session_state.lang == "zh" else "Platform Admin")
+                if st.button(t()["logout"], use_container_width=True, key="admin_sidebar_logout"):
+                    reset_to_guest_session()
+                    st.rerun()
             else:
-                st.caption(f"📋 {t()['subscription']}: {'💎 Pro' if tier == 'pro' else '🔒 Free'}")
-                if tier == "free":
-                    st.caption(f"🎫 {t()['free_trial']}: {remaining}")
-                    st.caption(f"📊 {t()['total_usage']}: {total_usage}")
+                if profile is None:
+                    profile = safe_get_profile(st.session_state.user_id)
+                tier = profile.get("subscription_tier", "free")
+                remaining = profile.get("free_trials_remaining", 30)
+                total_usage = get_user_total_usage(st.session_state.user_id)
+
+                if enterprise:
+                    st.caption(f"🏢 {t()['enterprise_plan']}")
                 else:
-                    st.caption(f"🎫 {t()['free_trial']}: ∞")
-                    expires_at = profile.get("subscription_expires_at")
-                    if expires_at:
-                        st.caption(f"📅 {t()['expires_at']}: {expires_at[:10]}")
-            
-            if st.button(t()["logout"], use_container_width=True):
-                if "payment_url" in st.session_state:
-                    del st.session_state.payment_url
-                st.session_state.authenticated = False
-                st.session_state.user_id = None
-                st.session_state.user_email = None
-                st.session_state.admin_mode = False
-                st.session_state.org_admin_mode = False
-                st.rerun()
-            
-            if not enterprise and tier == "free":
-                st.markdown("---")
-                st.markdown(f"### 💎 {t()['upgrade_title']}")
-                st.markdown(f"**{t()['pro_features_title']}**")
-                st.markdown(t()["pro_feature_1"])
-                st.markdown(t()["pro_feature_2"])
-                st.markdown(t()["pro_feature_3"])
-                
-                # 月付按钮
-                if st.button(t()["monthly"], key="sidebar_monthly_btn", use_container_width=True, type="primary"):
-                    spinner_text = "正在创建支付会话..." if st.session_state.lang == "zh" else "Creating payment session..."
-                    with st.spinner(spinner_text):
-                        url, error = create_checkout_session(
-                            st.session_state.user_id, st.session_state.user_email,
-                            st.secrets["STRIPE_PRICE_MONTHLY"]
-                        )
-                        if url:
-                            st.session_state.payment_url = url
-                            st.session_state.payment_type = "monthly"
-                            st.rerun()
-                        else:
-                            error_text = "创建支付会话失败" if st.session_state.lang == "zh" else "Failed to create payment session"
-                            st.error(f"{error_text}: {error}")
-                
-                # 年付按钮
-                if st.button(t()["yearly"], key="sidebar_yearly_btn", use_container_width=True, type="primary"):
-                    spinner_text = "正在创建支付会话..." if st.session_state.lang == "zh" else "Creating payment session..."
-                    with st.spinner(spinner_text):
-                        url, error = create_checkout_session(
-                            st.session_state.user_id, st.session_state.user_email,
-                            st.secrets["STRIPE_PRICE_YEARLY"]
-                        )
-                        if url:
-                            st.session_state.payment_url = url
-                            st.session_state.payment_type = "yearly"
-                            st.rerun()
-                        else:
-                            error_text = "创建支付会话失败" if st.session_state.lang == "zh" else "Failed to create payment session"
-                            st.error(f"{error_text}: {error}")
-                
-                # 显示支付链接
-                if "payment_url" in st.session_state and st.session_state.payment_url:
-                    if st.session_state.payment_type == "monthly":
-                        payment_display = "月付" if st.session_state.lang == "zh" else "Monthly"
+                    st.caption(f"📋 {t()['subscription']}: {'💎 Pro' if tier == 'pro' else '🔒 Free'}")
+                    if tier == "free":
+                        st.caption(f"🎫 {t()['free_trial']}: {remaining}")
+                        st.caption(f"📊 {t()['total_usage']}: {total_usage}")
                     else:
-                        payment_display = "年付" if st.session_state.lang == "zh" else "Yearly"
-                    st.success(f"✅ {payment_display} {t()['payment_created']}")
-                    button_html = f'''
-                    <a href="{st.session_state.payment_url}" target="_blank" style="
-                        display: block;
-                        width: 100%;
-                        padding: 0.5rem 0.75rem;
-                        background-color: #ff4b4b;
-                        color: white;
-                        text-align: center;
-                        text-decoration: none;
-                        border-radius: 0.5rem;
-                        font-weight: 500;
-                        margin: 0.5rem 0;
-                        border: none;
-                        cursor: pointer;
-                        transition: background-color 0.2s;
-                    " onmouseover="this.style.backgroundColor='#e04343'" onmouseout="this.style.backgroundColor='#ff4b4b'">
-                        {t()["go_to_payment"]}
-                    </a>
-                    '''
-                    st.markdown(button_html, unsafe_allow_html=True)
-                    st.info(t()["refresh_tip"])
+                        st.caption(f"🎫 {t()['free_trial']}: ∞")
+                        expires_at = profile.get("subscription_expires_at")
+                        if expires_at:
+                            st.caption(f"📅 {t()['expires_at']}: {expires_at[:10]}")
+
+                if st.button(t()["logout"], use_container_width=True):
+                    reset_to_guest_session()
+                    st.rerun()
+
+                if not enterprise and tier == "free":
+                    st.markdown("---")
+                    st.markdown(f"### 💎 {t()['upgrade_title']}")
+                    st.markdown(f"**{t()['pro_features_title']}**")
+                    st.markdown(t()["pro_feature_1"])
+                    st.markdown(t()["pro_feature_2"])
+                    st.markdown(t()["pro_feature_3"])
+
+                    if st.button(t()["monthly"], key="sidebar_monthly_btn", use_container_width=True, type="primary"):
+                        spinner_text = "正在创建支付会话..." if st.session_state.lang == "zh" else "Creating payment session..."
+                        with st.spinner(spinner_text):
+                            url, error = create_checkout_session(
+                                st.session_state.user_id, st.session_state.user_email,
+                                st.secrets["STRIPE_PRICE_MONTHLY"]
+                            )
+                            if url:
+                                st.session_state.payment_url = url
+                                st.session_state.payment_type = "monthly"
+                                st.rerun()
+                            else:
+                                error_text = "创建支付会话失败" if st.session_state.lang == "zh" else "Failed to create payment session"
+                                st.error(f"{error_text}: {error}")
+
+                    if st.button(t()["yearly"], key="sidebar_yearly_btn", use_container_width=True, type="primary"):
+                        spinner_text = "正在创建支付会话..." if st.session_state.lang == "zh" else "Creating payment session..."
+                        with st.spinner(spinner_text):
+                            url, error = create_checkout_session(
+                                st.session_state.user_id, st.session_state.user_email,
+                                st.secrets["STRIPE_PRICE_YEARLY"]
+                            )
+                            if url:
+                                st.session_state.payment_url = url
+                                st.session_state.payment_type = "yearly"
+                                st.rerun()
+                            else:
+                                error_text = "创建支付会话失败" if st.session_state.lang == "zh" else "Failed to create payment session"
+                                st.error(f"{error_text}: {error}")
+
+                    if "payment_url" in st.session_state and st.session_state.payment_url:
+                        if st.session_state.payment_type == "monthly":
+                            payment_display = "月付" if st.session_state.lang == "zh" else "Monthly"
+                        else:
+                            payment_display = "年付" if st.session_state.lang == "zh" else "Yearly"
+                        st.success(f"✅ {payment_display} {t()['payment_created']}")
+                        button_html = f'''
+                        <a href="{st.session_state.payment_url}" target="_blank" style="
+                            display: block;
+                            width: 100%;
+                            padding: 0.5rem 0.75rem;
+                            background-color: #ff4b4b;
+                            color: white;
+                            text-align: center;
+                            text-decoration: none;
+                            border-radius: 0.5rem;
+                            font-weight: 500;
+                            margin: 0.5rem 0;
+                            border: none;
+                            cursor: pointer;
+                            transition: background-color 0.2s;
+                        " onmouseover="this.style.backgroundColor='#e04343'" onmouseout="this.style.backgroundColor='#ff4b4b'">
+                            {t()["go_to_payment"]}
+                        </a>
+                        '''
+                        st.markdown(button_html, unsafe_allow_html=True)
+                        st.info(t()["refresh_tip"])
 
 def render_top_buttons():
     profile = None
     if st.session_state.authenticated and st.session_state.user_id not in (None, "admin"):
-        profile = get_user_profile(st.session_state.user_id)
+        profile = safe_get_profile(st.session_state.user_id)
     show_org_gear = profile and is_org_admin(profile)
     show_platform_gear = not st.session_state.authenticated
 
@@ -849,7 +877,7 @@ def render_main_app():
 
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
-        profile = get_user_profile(st.session_state.user_id)
+        profile = safe_get_profile(st.session_state.user_id)
         tier = profile.get("subscription_tier", "free")
         remaining = profile.get("free_trials_remaining", 30)
         total_usage = get_user_total_usage(st.session_state.user_id)
@@ -974,7 +1002,7 @@ def render_org_kb_tab(profile):
 
 
 def render_org_admin_panel():
-    profile = get_user_profile(st.session_state.user_id)
+    profile = safe_get_profile(st.session_state.user_id)
     if not is_org_admin(profile):
         st.session_state.org_admin_mode = False
         st.rerun()
@@ -1029,12 +1057,9 @@ def render_platform_enterprise_section(users):
                 "ID": org_id,
             })
 
-        col_title, col_minus = st.columns([11, 1])
-        with col_title:
-            st.subheader(t()["org_list"])
-            st.caption(t()["selected_org_hint"])
-        with col_minus:
-            minus_clicked = st.button("−", key="org_minus_btn", help=t()["delete_org"], use_container_width=True)
+        st.subheader(t()["org_list"])
+        st.caption(t()["selected_org_hint"])
+        st.dataframe(org_rows, use_container_width=True)
 
         org_ids = [org.get("id") for org in orgs]
 
@@ -1045,15 +1070,25 @@ def render_platform_enterprise_section(users):
                 f"{item.get('name', '-')} | {item.get('member_count', 0)}/{item.get('max_seats', 0)} | {short_id}"
             )
 
-        selected_org_id = st.selectbox(
-            t()["select_org"],
-            org_ids,
-            format_func=_org_option_label,
-            key="platform_selected_org_id",
-        )
-        selected_org = org_lookup.get(selected_org_id, {})
+        col_select, col_minus = st.columns([5, 1])
+        with col_select:
+            selected_org_id = st.selectbox(
+                t()["select_org"],
+                org_ids,
+                format_func=_org_option_label,
+                key="platform_selected_org_id",
+            )
+        with col_minus:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            minus_clicked = st.button(
+                t()["delete_minus"],
+                key="org_minus_btn",
+                type="primary",
+                use_container_width=True,
+                help=t()["delete_minus_help"],
+            )
 
-        st.dataframe(org_rows, use_container_width=True)
+        selected_org = org_lookup.get(selected_org_id, {})
 
         if minus_clicked and selected_org_id:
             st.session_state.pending_delete_org_id = selected_org_id
@@ -1287,9 +1322,7 @@ def render_admin_panel():
     
     st.markdown("---")
     if st.button(t()["exit_admin"], use_container_width=True, key="admin_exit"):
-        st.session_state.admin_mode = False
-        st.session_state.org_admin_mode = False
-        st.session_state.authenticated = False
+        reset_to_guest_session()
         st.rerun()
 
 def main():
