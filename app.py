@@ -1273,9 +1273,26 @@ def render_org_members_tab(profile):
                     st.rerun()
 
 
-def render_org_kb_tab(profile):
-    org_id = profile.get("organization_id")
-    org_name = profile.get("organization_name") or t()["enterprise_plan"]
+def render_tenant_kb_panel(
+    org_id: str,
+    org_name: str,
+    *,
+    widget_keys: dict | None = None,
+):
+    """Shared tenant knowledge base UI for org admins and platform admins."""
+    keys = {
+        "template_btn": "kb_download_template_btn",
+        "export_btn": "kb_download_export_btn",
+        "uploader": "kb_excel_uploader",
+        "replace": "kb_replace_on_import",
+        "import_btn": "kb_import_btn",
+        "delete_select": "org_kb_delete_select",
+        "delete_btn": "org_kb_delete_btn",
+        "add_form": "org_kb_add_form",
+    }
+    if widget_keys:
+        keys.update(widget_keys)
+
     entries = list_tenant_knowledge(SUPABASE_URL, SERVICE_HEADERS, org_id)
 
     st.markdown(f"### {t()['kb_db_title'].format(org_name=org_name)}")
@@ -1294,7 +1311,7 @@ def render_org_kb_tab(profile):
             file_name=template_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
-            key="kb_download_template_btn",
+            key=keys["template_btn"],
         )
     with col_export:
         st.download_button(
@@ -1303,16 +1320,16 @@ def render_org_kb_tab(profile):
             file_name=export_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
-            key="kb_download_export_btn",
+            key=keys["export_btn"],
         )
 
     uploaded_excel = st.file_uploader(
         t()["kb_upload_excel"],
         type=["xlsx"],
-        key="kb_excel_uploader",
+        key=keys["uploader"],
     )
-    replace_existing = st.checkbox(t()["kb_replace_on_import"], key="kb_replace_on_import")
-    if st.button(t()["kb_import_btn"], key="kb_import_btn", type="primary", use_container_width=True):
+    replace_existing = st.checkbox(t()["kb_replace_on_import"], key=keys["replace"])
+    if st.button(t()["kb_import_btn"], key=keys["import_btn"], type="primary", use_container_width=True):
         if not uploaded_excel:
             st.warning(t()["kb_upload_excel"])
         else:
@@ -1351,15 +1368,18 @@ def render_org_kb_tab(profile):
         ]
         st.dataframe(kb_rows, use_container_width=True)
 
-        delete_options = [f"#{e.get('id')} [{e.get('category')}] {(e.get('content') or '')[:40]}" for e in entries]
-        del_sel = st.selectbox(t()["kb_delete"], delete_options, key="org_kb_delete_select")
-        if st.button(t()["kb_delete"], key="org_kb_delete_btn", use_container_width=True):
+        delete_options = [
+            f"#{e.get('id')} [{e.get('category')}] {(e.get('content') or '')[:40]}"
+            for e in entries
+        ]
+        del_sel = st.selectbox(t()["kb_delete"], delete_options, key=keys["delete_select"])
+        if st.button(t()["kb_delete"], key=keys["delete_btn"], use_container_width=True):
             record_id = int(del_sel.split("]")[0].replace("#", "").strip())
             if delete_tenant_knowledge(SUPABASE_URL, SERVICE_HEADERS, record_id, org_id):
                 st.success("已删除" if st.session_state.lang == "zh" else "Deleted")
                 st.rerun()
 
-    with st.form("org_kb_add_form", border=True):
+    with st.form(keys["add_form"], border=True):
         category = st.selectbox(t()["kb_category"], KNOWLEDGE_CATEGORIES)
         content = st.text_area(t()["kb_content"])
         submitted = st.form_submit_button(t()["kb_add"], type="primary", use_container_width=True)
@@ -1380,6 +1400,12 @@ def render_org_kb_tab(profile):
             ):
                 st.success("已添加" if st.session_state.lang == "zh" else "Added")
                 st.rerun()
+
+
+def render_org_kb_tab(profile):
+    org_id = profile.get("organization_id")
+    org_name = profile.get("organization_name") or t()["enterprise_plan"]
+    render_tenant_kb_panel(org_id, org_name)
 
 
 def render_org_admin_panel():
@@ -1453,38 +1479,20 @@ def render_platform_org_kb_section():
     )
     selected_org = org_lookup.get(selected_org_id, {})
     org_name = selected_org.get("name") or t()["enterprise_plan"]
-    entries = list_tenant_knowledge(SUPABASE_URL, SERVICE_HEADERS, selected_org_id)
-
-    st.markdown(f"### {t()['kb_db_title'].format(org_name=org_name)}")
-    st.caption(t()["platform_kb_count"].format(count=len(entries)))
-
-    lang = st.session_state.lang
-    safe_org = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in org_name)
-    export_name = f"{safe_org}_knowledge_export.xlsx"
-
-    st.download_button(
-        t()["kb_download_data"],
-        data=build_kb_export_excel(entries, org_name, lang),
-        file_name=export_name,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-        key="platform_kb_download_btn",
+    render_tenant_kb_panel(
+        selected_org_id,
+        org_name,
+        widget_keys={
+            "template_btn": "platform_kb_download_template_btn",
+            "export_btn": "platform_kb_download_export_btn",
+            "uploader": "platform_kb_excel_uploader",
+            "replace": "platform_kb_replace_on_import",
+            "import_btn": "platform_kb_import_btn",
+            "delete_select": "platform_kb_delete_select",
+            "delete_btn": "platform_kb_delete_btn",
+            "add_form": "platform_kb_add_form",
+        },
     )
-
-    st.markdown("---")
-    if not entries:
-        st.info(t()["platform_kb_empty"])
-        return
-
-    kb_rows = [
-        {
-            "ID": e.get("id"),
-            t()["kb_category"]: e.get("category"),
-            t()["kb_content"]: (e.get("content") or "")[:200],
-        }
-        for e in entries
-    ]
-    st.dataframe(kb_rows, use_container_width=True)
 
 
 def render_platform_enterprise_section(users):
