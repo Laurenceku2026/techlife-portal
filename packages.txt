@@ -1,0 +1,2 @@
+# Pin Python for Streamlit Cloud (3.14 can segfault with file upload widgets).
+python-3.12.8

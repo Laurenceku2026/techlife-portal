@@ -626,6 +626,9 @@ def apply_pending_admin_login():
 
 ORG_ADMIN_WIDGET_KEYS = (
     "org_admin_section",
+    "org_tab_btn_members",
+    "org_tab_btn_kb",
+    "org_tab_btn_settings",
     "org_remove_select",
     "org_remove_btn",
     "kb_download_template_btn",
@@ -693,19 +696,22 @@ def _clear_org_admin_section_keys(section: str):
                 st.session_state.pop(key, None)
 
 
-def _on_org_admin_section_change():
-    previous_section = st.session_state.get("_org_admin_active_section")
-    current_section = st.session_state.get("org_admin_section")
-    if previous_section and current_section and previous_section != current_section:
-        st.session_state._org_admin_section_to_clear = previous_section
-    if current_section:
-        st.session_state._org_admin_active_section = current_section
+def request_org_admin_section_switch(target_section: str):
+    current_section = st.session_state.get("org_admin_section", "members")
+    if current_section == target_section:
+        return
+    st.session_state._org_admin_section_target = target_section
+    st.session_state._org_admin_section_switch_pending = True
 
 
-def apply_pending_org_admin_section_clear():
-    section_to_clear = st.session_state.pop("_org_admin_section_to_clear", None)
-    if section_to_clear:
-        _clear_org_admin_section_keys(section_to_clear)
+def apply_pending_org_admin_section_switch():
+    if not st.session_state.pop("_org_admin_section_switch_pending", False):
+        return
+    target_section = st.session_state.pop("_org_admin_section_target", "members")
+    reset_to_authenticated_main_session()
+    st.session_state.org_admin_mode = True
+    st.session_state.org_admin_section = target_section
+    st.session_state._org_admin_active_section = target_section
 
 
 def _clear_org_admin_widget_keys():
@@ -728,6 +734,7 @@ def apply_pending_org_admin_entry():
     if st.session_state.pop("_enter_org_admin_pending", False):
         reset_to_authenticated_main_session()
         st.session_state.org_admin_mode = True
+        st.session_state.org_admin_section = "members"
         st.session_state._org_admin_active_section = "members"
 
 
@@ -1579,15 +1586,43 @@ def render_org_admin_panel():
         "kb": t()["kb_tab"],
         "settings": t()["settings_tab"],
     }
-    selected_section = st.radio(
-        "org_admin_section",
-        list(section_labels.keys()),
-        format_func=lambda key: section_labels[key],
-        horizontal=True,
-        key="org_admin_section",
-        label_visibility="collapsed",
-        on_change=_on_org_admin_section_change,
-    )
+    selected_section = st.session_state.get("org_admin_section", "members")
+    if selected_section not in section_labels:
+        selected_section = "members"
+        st.session_state.org_admin_section = "members"
+
+    tab_col1, tab_col2, tab_col3 = st.columns(3)
+    with tab_col1:
+        st.button(
+            section_labels["members"],
+            key="org_tab_btn_members",
+            type="primary" if selected_section == "members" else "secondary",
+            use_container_width=True,
+            disabled=selected_section == "members",
+            on_click=request_org_admin_section_switch,
+            args=("members",),
+        )
+    with tab_col2:
+        st.button(
+            section_labels["kb"],
+            key="org_tab_btn_kb",
+            type="primary" if selected_section == "kb" else "secondary",
+            use_container_width=True,
+            disabled=selected_section == "kb",
+            on_click=request_org_admin_section_switch,
+            args=("kb",),
+        )
+    with tab_col3:
+        st.button(
+            section_labels["settings"],
+            key="org_tab_btn_settings",
+            type="primary" if selected_section == "settings" else "secondary",
+            use_container_width=True,
+            disabled=selected_section == "settings",
+            on_click=request_org_admin_section_switch,
+            args=("settings",),
+        )
+
     if selected_section == "members":
         render_org_members_tab(profile)
     elif selected_section == "kb":
@@ -2041,7 +2076,7 @@ def main():
         apply_pending_guest_reset()
         apply_pending_admin_login()
         apply_pending_org_admin_entry()
-        apply_pending_org_admin_section_clear()
+        apply_pending_org_admin_section_switch()
         apply_pending_org_admin_exit()
         if not st.session_state.get("authenticated"):
             st.session_state.admin_mode = False
