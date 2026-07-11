@@ -30,7 +30,7 @@ def supabase_select(
             if value is None:
                 parts.append(f"{key}=is.null")
             else:
-                parts.append(f"{key}=eq.{value}")
+                parts.append(f"{key}=eq.{quote(str(value), safe='')}")
     if order:
         parts.append(f"order={order}")
     url = _table_url(supabase_url, table, "&".join(parts))
@@ -269,6 +269,70 @@ def ensure_profile(
         return supabase_update(supabase_url, headers, "profiles", user_id, payload)
     payload["id"] = user_id
     return supabase_insert(supabase_url, headers, "profiles", payload) is not None
+
+
+def find_user_id_by_email(
+    supabase_url: str,
+    service_headers: Dict[str, str],
+    email: str,
+) -> Optional[str]:
+    normalized = (email or "").strip().lower()
+    if not normalized:
+        return None
+
+    try:
+        response = requests.get(
+            f"{supabase_url}/auth/v1/admin/users",
+            headers=service_headers,
+            timeout=15,
+        )
+        if response.status_code == 200:
+            data = response.json()
+            user_list = data.get("users", []) if isinstance(data, dict) else data
+            for user in user_list:
+                if (user.get("email") or "").strip().lower() == normalized:
+                    return user.get("id")
+    except Exception:
+        pass
+
+    rows = supabase_select(
+        supabase_url,
+        service_headers,
+        "profiles",
+        select="id,email",
+        filters={"email": email.strip()},
+    )
+    if rows:
+        return rows[0].get("id")
+
+    return None
+
+
+def assign_email_to_org(
+    supabase_url: str,
+    service_headers: Dict[str, str],
+    email: str,
+    organization_id: str,
+    org_role: str,
+) -> tuple[bool, str]:
+    user_id = find_user_id_by_email(supabase_url, service_headers, email)
+    if not user_id:
+        return False, "not_found"
+
+    ok = ensure_profile(
+        supabase_url,
+        service_headers,
+        user_id,
+        email.strip(),
+        {
+            "organization_id": organization_id,
+            "org_role": org_role,
+            "subscription_tier": "enterprise",
+        },
+    )
+    if not ok:
+        return False, "profile_failed"
+    return True, "ok"
 
 
 def assign_user_to_org(

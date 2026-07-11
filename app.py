@@ -8,10 +8,12 @@ from enterprise_utils import (
     KNOWLEDGE_CATEGORIES,
     add_org_member,
     add_tenant_knowledge,
+    assign_email_to_org,
     assign_user_to_org,
     count_org_members,
     create_organization,
     delete_tenant_knowledge,
+    find_user_id_by_email,
     get_full_profile,
     is_enterprise_user,
     is_org_admin,
@@ -26,16 +28,31 @@ from enterprise_utils import (
 st.set_page_config(page_title="TechLife Suite", page_icon="🔧", layout="wide")
 
 # ==================== 管理员配置（从 secrets 读取） ====================
-def _require_secret(key: str) -> str:
-    value = st.secrets.get(key)
+def _get_secret(key: str, *fallback_keys: str) -> str:
+    for name in (key, *fallback_keys):
+        value = st.secrets.get(name)
+        if value:
+            return str(value)
+    try:
+        supa = st.secrets.get("connections", {}).get("supabase", {})
+        value = supa.get(key)
+        if value:
+            return str(value)
+    except Exception:
+        pass
+    return ""
+
+
+def _require_secret(key: str, *fallback_keys: str) -> str:
+    value = _get_secret(key, *fallback_keys)
     if not value:
-        st.error(f"缺少配置 {key}，请在 Streamlit secrets 中添加。")
+        st.error(f"缺少配置 {key}，请在 Streamlit Cloud Secrets 或 .streamlit/secrets.toml 中添加。")
         st.stop()
     return value
 
 ADMIN_USERNAME = _require_secret("ADMIN_USERNAME")
 ADMIN_PASSWORD = _require_secret("ADMIN_PASSWORD")
-ADMIN_EMAIL = st.secrets.get("ADMIN_EMAIL", "")
+ADMIN_EMAIL = _get_secret("ADMIN_EMAIL")
 
 # 五个 APP 的 URL（新增 AI-FA）
 APP_URLS = {
@@ -47,15 +64,13 @@ APP_URLS = {
 }
 
 # ==================== Stripe 配置 ====================
-stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
+_stripe_key = _require_secret("STRIPE_SECRET_KEY")
+stripe.api_key = _stripe_key
 
 # ==================== Supabase 配置 ====================
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_SERVICE_ROLE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
-SUPABASE_ANON_KEY = st.secrets.get("SUPABASE_ANON_KEY")
-if not SUPABASE_ANON_KEY:
-    st.error("缺少配置 SUPABASE_ANON_KEY，请在 Streamlit secrets 中添加。")
-    st.stop()
+SUPABASE_URL = _require_secret("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = _require_secret("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_KEY")
+SUPABASE_ANON_KEY = _get_secret("SUPABASE_ANON_KEY") or SUPABASE_SERVICE_ROLE_KEY
 
 SERVICE_HEADERS = {
     "apikey": SUPABASE_SERVICE_ROLE_KEY,
@@ -192,6 +207,8 @@ TEXTS = {
         "org_created": "企业已创建",
         "org_updated": "企业已更新",
         "user_assigned": "用户已绑定",
+        "assign_by_email": "按邮箱绑定",
+        "user_not_found": "未找到该邮箱用户，请先让对方注册 Portal 账号",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -303,6 +320,8 @@ Let AI become your Chief Quality Engineer.
         "org_created": "Organization created",
         "org_updated": "Organization updated",
         "user_assigned": "User assigned",
+        "assign_by_email": "Assign by Email",
+        "user_not_found": "Email not found. Ask the user to register on the portal first.",
     }
 }
 
@@ -991,47 +1010,61 @@ def render_platform_enterprise_section(users):
                 st.success(t()["org_updated"])
                 st.rerun()
 
-    if users and orgs:
+    if orgs:
         st.subheader(t()["assign_user_org"])
-        user_options = [f"{u.get('email')} ({u.get('subscription_tier')})" for u in users]
-        selected_user_label = st.selectbox(t()["select_user"], user_options, key="platform_assign_user")
-        selected_user = users[user_options.index(selected_user_label)]
-        assign_org_label = st.selectbox(
-            t()["select_org"],
-            ["—"] + [o.get("name") for o in orgs],
-            key="platform_assign_org",
-        )
-        assign_role = st.selectbox(t()["member_role"], ["member", "admin"], key="platform_assign_role")
+        with st.form("platform_assign_email_form", border=True):
+            assign_email = st.text_input(t()["member_email"], key="platform_assign_email")
+            assign_org_name = st.selectbox(
+                t()["select_org"],
+                [o.get("name") for o in orgs],
+                key="platform_assign_org_email",
+            )
+            assign_role = st.selectbox(
+                t()["member_role"],
+                ["admin", "member"],
+                index=0,
+                key="platform_assign_role_email",
+            )
+            submitted = st.form_submit_button(t()["assign_by_email"], type="primary", use_container_width=True)
+            if submitted:
+                if not assign_email.strip():
+                    st.warning("请输入邮箱" if st.session_state.lang == "zh" else "Please enter an email")
+                else:
+                    org = next((o for o in orgs if o.get("name") == assign_org_name), None)
+                    if org:
+                        ok, reason = assign_email_to_org(
+                            SUPABASE_URL,
+                            SERVICE_HEADERS,
+                            assign_email.strip(),
+                            org.get("id"),
+                            assign_role,
+                        )
+                        if ok:
+                            st.success(t()["user_assigned"])
+                            st.rerun()
+                        elif reason == "not_found":
+                            st.error(t()["user_not_found"])
+                        else:
+                            st.error("绑定失败" if st.session_state.lang == "zh" else "Assignment failed")
 
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            if st.button(t()["set_org_admin"], key="platform_set_admin", use_container_width=True):
-                if assign_org_label and assign_org_label != "—":
-                    org = next(o for o in orgs if o.get("name") == assign_org_label)
-                    if assign_user_to_org(
-                        SUPABASE_URL, SERVICE_HEADERS,
-                        selected_user.get("id"), org.get("id"), "admin",
-                    ):
-                        st.success(t()["user_assigned"])
-                        st.rerun()
-        with col_b:
-            if st.button(t()["set_org_member"], key="platform_set_member", use_container_width=True):
-                if assign_org_label and assign_org_label != "—":
-                    org = next(o for o in orgs if o.get("name") == assign_org_label)
-                    if assign_user_to_org(
-                        SUPABASE_URL, SERVICE_HEADERS,
-                        selected_user.get("id"), org.get("id"), assign_role,
-                    ):
-                        st.success(t()["user_assigned"])
-                        st.rerun()
-        with col_c:
-            if st.button(t()["remove_from_org"], key="platform_remove_org", use_container_width=True):
-                if assign_user_to_org(
-                    SUPABASE_URL, SERVICE_HEADERS,
-                    selected_user.get("id"), None, None, make_enterprise=False,
+        st.caption(
+            "输入邮箱即可指定企业管理员或成员，无需从下拉列表选择。"
+            if st.session_state.lang == "zh"
+            else "Enter an email to assign org admin or member without picking from the user list."
+        )
+
+        with st.form("platform_remove_email_form", border=True):
+            remove_email = st.text_input(t()["member_email"], key="platform_remove_email")
+            submitted_remove = st.form_submit_button(t()["remove_from_org"], use_container_width=True)
+            if submitted_remove and remove_email.strip():
+                user_id = find_user_id_by_email(SUPABASE_URL, SERVICE_HEADERS, remove_email.strip())
+                if user_id and assign_user_to_org(
+                    SUPABASE_URL, SERVICE_HEADERS, user_id, None, None, make_enterprise=False,
                 ):
                     st.success(t()["user_assigned"])
                     st.rerun()
+                elif not user_id:
+                    st.error(t()["user_not_found"])
 
 
 def render_admin_user_section(users, auth_users):
