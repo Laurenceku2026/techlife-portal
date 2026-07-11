@@ -641,6 +641,51 @@ ORG_ADMIN_WIDGET_KEYS = (
     "org_admin_exit",
 )
 
+ORG_ADMIN_SECTION_WIDGET_KEYS = {
+    "members": (
+        "org_remove_select",
+        "org_remove_btn",
+    ),
+    "kb": (
+        "kb_download_template_btn",
+        "kb_download_export_btn",
+        "kb_excel_uploader",
+        "kb_replace_on_import",
+        "kb_import_btn",
+        "org_kb_delete_select",
+        "org_kb_delete_btn",
+    ),
+    "settings": (
+        "org_admin_logo_uploader",
+        "org_admin_save_logo",
+        "org_admin_remove_logo",
+    ),
+}
+
+ORG_ADMIN_SECTION_FORM_PREFIXES = {
+    "members": "FormSubmitter:org_add_member_form",
+    "kb": "FormSubmitter:org_kb_add_form",
+}
+
+
+def _clear_org_admin_section_keys(section: str):
+    for key in ORG_ADMIN_SECTION_WIDGET_KEYS.get(section, ()):
+        st.session_state.pop(key, None)
+    form_prefix = ORG_ADMIN_SECTION_FORM_PREFIXES.get(section)
+    if form_prefix:
+        for key in list(st.session_state.keys()):
+            if str(key).startswith(form_prefix):
+                st.session_state.pop(key, None)
+
+
+def _sync_org_admin_section(selected_section: str):
+    previous_section = st.session_state.get("_org_admin_active_section")
+    if previous_section == selected_section:
+        return
+    if previous_section:
+        _clear_org_admin_section_keys(previous_section)
+    st.session_state._org_admin_active_section = selected_section
+
 
 def _clear_org_admin_widget_keys():
     for key in ORG_ADMIN_WIDGET_KEYS:
@@ -662,6 +707,7 @@ def apply_pending_org_admin_entry():
     if st.session_state.pop("_enter_org_admin_pending", False):
         reset_to_authenticated_main_session()
         st.session_state.org_admin_mode = True
+        st.session_state._org_admin_active_section = "members"
 
 
 def apply_pending_org_admin_exit():
@@ -1331,6 +1377,8 @@ def render_org_members_tab(profile):
         removable = [m for m in members if m.get("id") != st.session_state.user_id]
         if removable:
             options = [f"{m.get('email')} ({m.get('org_role')})" for m in removable]
+            if st.session_state.get("org_remove_select") not in options:
+                st.session_state.pop("org_remove_select", None)
             selected = st.selectbox(t()["remove_member"], options, key="org_remove_select")
             if st.button(t()["remove_member"], key="org_remove_btn", use_container_width=True):
                 email = selected.split(" ")[0]
@@ -1448,6 +1496,8 @@ def render_tenant_kb_panel(
             f"#{e.get('id')} [{e.get('category')}] {(e.get('content') or '')[:40]}"
             for e in entries
         ]
+        if st.session_state.get(keys["delete_select"]) not in delete_options:
+            st.session_state.pop(keys["delete_select"], None)
         del_sel = st.selectbox(t()["kb_delete"], delete_options, key=keys["delete_select"])
         if st.button(t()["kb_delete"], key=keys["delete_btn"], use_container_width=True):
             record_id = int(del_sel.split("]")[0].replace("#", "").strip())
@@ -1510,6 +1560,7 @@ def render_org_admin_panel():
         key="org_admin_section",
         label_visibility="collapsed",
     )
+    _sync_org_admin_section(selected_section)
     if selected_section == "members":
         render_org_members_tab(profile)
     elif selected_section == "kb":
