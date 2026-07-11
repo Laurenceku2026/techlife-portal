@@ -215,6 +215,10 @@ TEXTS = {
         "delete_org": "删除企业",
         "delete_org_confirm": "确认删除该企业（将解除所有成员绑定并删除企业知识库）",
         "org_deleted": "企业已删除",
+        "confirm_delete_save": "确认删除",
+        "cancel": "取消",
+        "selected_org_hint": "在表格中选中企业后，点右上角 − 删除，再点确认删除",
+        "pending_delete": "待删除企业",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -331,6 +335,10 @@ Let AI become your Chief Quality Engineer.
         "delete_org": "Delete Organization",
         "delete_org_confirm": "Confirm delete (unbinds all members and removes tenant knowledge base)",
         "org_deleted": "Organization deleted",
+        "confirm_delete_save": "Confirm Delete",
+        "cancel": "Cancel",
+        "selected_org_hint": "Select an organization, click −, then confirm delete",
+        "pending_delete": "Organization pending delete",
     }
 }
 
@@ -353,6 +361,8 @@ if "show_admin_login" not in st.session_state:
     st.session_state.show_admin_login = False
 if "org_admin_mode" not in st.session_state:
     st.session_state.org_admin_mode = False
+if "pending_delete_org_id" not in st.session_state:
+    st.session_state.pending_delete_org_id = None
 
 def t():
     return TEXTS[st.session_state.lang]
@@ -986,39 +996,94 @@ def render_org_admin_panel():
 
 
 def render_platform_enterprise_section(users):
-    orgs = list_organizations(SUPABASE_URL, SERVICE_HEADERS)
-    if not orgs and st.session_state.lang == "zh":
-        st.caption(t()["migration_hint"])
+    try:
+        orgs = list_organizations(SUPABASE_URL, SERVICE_HEADERS)
+        if not orgs and st.session_state.lang == "zh":
+            st.caption(t()["migration_hint"])
 
-    st.subheader(t()["create_org"])
-    with st.form("platform_create_org", border=True):
-        org_name = st.text_input(t()["org_name"])
-        max_seats = st.number_input(t()["max_seats"], min_value=1, max_value=500, value=10)
-        submitted = st.form_submit_button(t()["create_org"], type="primary", use_container_width=True)
-        if submitted and org_name.strip():
-            created = create_organization(SUPABASE_URL, SERVICE_HEADERS, org_name.strip(), int(max_seats))
-            if created:
-                st.success(t()["org_created"])
-                st.rerun()
+        st.subheader(t()["create_org"])
+        with st.form("platform_create_org", border=True):
+            org_name = st.text_input(t()["org_name"])
+            max_seats = st.number_input(t()["max_seats"], min_value=1, max_value=500, value=10)
+            submitted = st.form_submit_button(t()["create_org"], type="primary", use_container_width=True)
+            if submitted and org_name.strip():
+                created = create_organization(SUPABASE_URL, SERVICE_HEADERS, org_name.strip(), int(max_seats))
+                if created:
+                    st.session_state.pending_delete_org_id = None
+                    st.success(t()["org_created"])
+                    st.rerun()
 
-    if orgs:
-        st.subheader(t()["org_list"])
+        if not orgs:
+            return
+
         org_rows = []
+        org_lookup = {}
         for org in orgs:
-            member_count = count_org_members(SUPABASE_URL, SERVICE_HEADERS, org.get("id"))
+            org_id = org.get("id")
+            member_count = count_org_members(SUPABASE_URL, SERVICE_HEADERS, org_id)
+            org_lookup[org_id] = {**org, "member_count": member_count}
             org_rows.append({
                 t()["org_name"]: org.get("name"),
                 t()["max_seats"]: org.get("max_seats"),
                 t()["seats_used"]: member_count,
-                "ID": org.get("id"),
+                "ID": org_id,
             })
+
+        col_title, col_minus = st.columns([11, 1])
+        with col_title:
+            st.subheader(t()["org_list"])
+            st.caption(t()["selected_org_hint"])
+        with col_minus:
+            minus_clicked = st.button("−", key="org_minus_btn", help=t()["delete_org"], use_container_width=True)
+
+        org_ids = [org.get("id") for org in orgs]
+
+        def _org_option_label(oid: str) -> str:
+            item = org_lookup.get(oid, {})
+            short_id = (oid or "")[:8]
+            return (
+                f"{item.get('name', '-')} | {item.get('member_count', 0)}/{item.get('max_seats', 0)} | {short_id}"
+            )
+
+        selected_org_id = st.selectbox(
+            t()["select_org"],
+            org_ids,
+            format_func=_org_option_label,
+            key="platform_selected_org_id",
+        )
+        selected_org = org_lookup.get(selected_org_id, {})
+
         st.dataframe(org_rows, use_container_width=True)
 
-        org_options = [f"{o.get('name')} ({o.get('max_seats')} seats)" for o in orgs]
-        selected_org_label = st.selectbox(t()["select_org"], org_options, key="platform_select_org")
-        selected_org = orgs[org_options.index(selected_org_label)]
-        org_id = selected_org.get("id")
+        if minus_clicked and selected_org_id:
+            st.session_state.pending_delete_org_id = selected_org_id
 
+        pending_id = st.session_state.get("pending_delete_org_id")
+        if pending_id and pending_id in org_lookup:
+            pending_name = org_lookup[pending_id].get("name", pending_id)
+            st.warning(f"{t()['pending_delete']}: {pending_name}")
+            col_confirm, col_cancel = st.columns(2)
+            with col_confirm:
+                if st.button(t()["confirm_delete_save"], key="confirm_delete_org_btn", type="primary", use_container_width=True):
+                    ok, reason = delete_organization(SUPABASE_URL, SERVICE_HEADERS, pending_id)
+                    if ok:
+                        st.session_state.pending_delete_org_id = None
+                        st.success(t()["org_deleted"])
+                        st.rerun()
+                    else:
+                        st.error(
+                            f"删除失败: {reason}"
+                            if st.session_state.lang == "zh"
+                            else f"Delete failed: {reason}"
+                        )
+            with col_cancel:
+                if st.button(t()["cancel"], key="cancel_delete_org_btn", use_container_width=True):
+                    st.session_state.pending_delete_org_id = None
+                    st.rerun()
+        elif pending_id:
+            st.session_state.pending_delete_org_id = None
+
+        st.markdown("---")
         new_max = st.number_input(
             t()["max_seats"],
             min_value=1,
@@ -1027,69 +1092,43 @@ def render_platform_enterprise_section(users):
             key="platform_org_max_seats",
         )
         if st.button(t()["update_btn"], key="platform_update_org_btn", use_container_width=True):
-            if update_organization(SUPABASE_URL, SERVICE_HEADERS, org_id, {"max_seats": int(new_max)}):
+            if update_organization(SUPABASE_URL, SERVICE_HEADERS, selected_org_id, {"max_seats": int(new_max)}):
                 st.success(t()["org_updated"])
                 st.rerun()
 
-        st.markdown("---")
-        confirm_delete = st.checkbox(t()["delete_org_confirm"], key="platform_delete_org_confirm")
-        if st.button(t()["delete_org"], key="platform_delete_org_btn", use_container_width=True, type="primary"):
-            if not confirm_delete:
-                st.warning("请先勾选确认" if st.session_state.lang == "zh" else "Please check the confirmation box first")
-            else:
-                ok, reason = delete_organization(SUPABASE_URL, SERVICE_HEADERS, org_id)
-                if ok:
-                    st.success(t()["org_deleted"])
-                    st.rerun()
-                else:
-                    st.error(f"删除失败: {reason}" if st.session_state.lang == "zh" else f"Delete failed: {reason}")
-
-    if orgs:
         st.subheader(t()["assign_user_org"])
         with st.form("platform_assign_email_form", border=True):
             assign_email = st.text_input(t()["member_email"], key="platform_assign_email")
-            assign_org_name = st.selectbox(
-                t()["select_org"],
-                [o.get("name") for o in orgs],
-                key="platform_assign_org_email",
-            )
             assign_role = st.selectbox(
                 t()["member_role"],
                 ["admin", "member"],
                 index=0,
                 key="platform_assign_role_email",
             )
+            st.caption(_org_option_label(selected_org_id))
             submitted = st.form_submit_button(t()["assign_by_email"], type="primary", use_container_width=True)
             if submitted:
                 if not assign_email.strip():
                     st.warning("请输入邮箱" if st.session_state.lang == "zh" else "Please enter an email")
                 else:
-                    org = next((o for o in orgs if o.get("name") == assign_org_name), None)
-                    if org:
-                        ok, reason = assign_email_to_org(
-                            SUPABASE_URL,
-                            SERVICE_HEADERS,
-                            assign_email.strip(),
-                            org.get("id"),
-                            assign_role,
+                    ok, reason = assign_email_to_org(
+                        SUPABASE_URL,
+                        SERVICE_HEADERS,
+                        assign_email.strip(),
+                        selected_org_id,
+                        assign_role,
+                    )
+                    if ok:
+                        st.success(t()["user_assigned"])
+                        st.rerun()
+                    elif reason == "not_found":
+                        st.error(t()["user_not_found"])
+                    else:
+                        st.error(
+                            f"绑定失败: {reason}"
+                            if st.session_state.lang == "zh"
+                            else f"Assignment failed: {reason}"
                         )
-                        if ok:
-                            st.success(t()["user_assigned"])
-                            st.rerun()
-                        elif reason == "not_found":
-                            st.error(t()["user_not_found"])
-                        else:
-                            st.error(
-                                f"绑定失败: {reason}"
-                                if st.session_state.lang == "zh"
-                                else f"Assignment failed: {reason}"
-                            )
-
-        st.caption(
-            "输入邮箱即可指定企业管理员或成员，无需从下拉列表选择。"
-            if st.session_state.lang == "zh"
-            else "Enter an email to assign org admin or member without picking from the user list."
-        )
 
         with st.form("platform_remove_email_form", border=True):
             remove_email = st.text_input(t()["member_email"], key="platform_remove_email")
@@ -1103,6 +1142,9 @@ def render_platform_enterprise_section(users):
                     st.rerun()
                 elif not user_id:
                     st.error(t()["user_not_found"])
+    except Exception as exc:
+        st.error("企业管理操作失败" if st.session_state.lang == "zh" else "Organization management failed")
+        st.exception(exc)
 
 
 def render_admin_user_section(users, auth_users):

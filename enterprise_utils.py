@@ -217,29 +217,41 @@ def delete_organization(
     headers: Dict[str, str],
     org_id: str,
 ) -> tuple[bool, str]:
-    members = list_org_members(supabase_url, headers, org_id)
-    for member in members:
-        member_id = member.get("id")
-        if member_id:
-            assign_user_to_org(
-                supabase_url,
-                headers,
-                member_id,
-                organization_id=None,
-                org_role=None,
-                make_enterprise=False,
-            )
+    try:
+        if not org_id:
+            return False, "missing_org_id"
 
-    supabase_delete(
-        supabase_url,
-        headers,
-        "knowledge_base",
-        f"organization_id=eq.{org_id}&scope=eq.tenant",
-    )
+        members = list_org_members(supabase_url, headers, org_id)
+        for member in members:
+            member_id = member.get("id")
+            if member_id:
+                ok, detail = supabase_update(
+                    supabase_url,
+                    headers,
+                    "profiles",
+                    member_id,
+                    {"organization_id": None, "org_role": None},
+                )
+                if not ok:
+                    return False, detail or f"unbind_failed:{member_id}"
 
-    if not supabase_delete(supabase_url, headers, "organizations", f"id=eq.{org_id}"):
-        return False, "delete_failed"
-    return True, "ok"
+        supabase_delete(
+            supabase_url,
+            headers,
+            "knowledge_base",
+            f"organization_id=eq.{quote(str(org_id), safe='')}&scope=eq.tenant",
+        )
+
+        if not supabase_delete(
+            supabase_url,
+            headers,
+            "organizations",
+            f"id=eq.{quote(str(org_id), safe='')}",
+        ):
+            return False, "delete_failed"
+        return True, "ok"
+    except Exception as exc:
+        return False, str(exc)
 
 
 def list_org_members(
