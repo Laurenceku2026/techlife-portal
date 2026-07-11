@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
@@ -20,11 +21,18 @@ KB_CATEGORY_HEADERS = [
 ]
 KB_HEADER_ROW = 3
 KB_DATA_START_ROW = 4
-KB_INSTRUCTION = (
-    "请在下面各列类别中添加您的经验，每条经验占一格，经验之间不要留空 / "
-    "Please add your knowledge in the category below, each knowledge is in one cell "
-    "and no empty cell in between"
-)
+KB_TEMPLATE_LAST_ROW = 201
+KB_COLUMN_COUNT = len(KNOWLEDGE_CATEGORIES)
+KB_TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "knowledge_base_enterprise.xlsx"
+KB_COLUMN_WIDTHS = {
+    "A": 26.5703125,
+    "B": 26.7109375,
+    "C": 27.0,
+    "D": 26.140625,
+    "E": 25.7109375,
+    "F": 26.28515625,
+    "G": 27.42578125,
+}
 LOGO_MAX_BYTES = 500_000
 LOGO_ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 
@@ -783,8 +791,79 @@ def _kb_workbook_title(org_name: str, lang: str) -> str:
     return f"{org_name} · 企业数据库"
 
 
-def _kb_sheet_title(lang: str) -> str:
-    return "Knowledge" if lang == "en" else "知识库"
+def _open_kb_template_workbook():
+    from openpyxl import load_workbook
+
+    if not KB_TEMPLATE_PATH.exists():
+        raise FileNotFoundError(f"Missing knowledge base template: {KB_TEMPLATE_PATH}")
+    return load_workbook(KB_TEMPLATE_PATH)
+
+
+def _save_workbook_bytes(workbook) -> bytes:
+    import io
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def _apply_kb_title(worksheet, org_name: str, lang: str) -> None:
+    from openpyxl.styles import Font
+
+    title_cell = worksheet.cell(1, 1)
+    title_cell.value = _kb_workbook_title(org_name, lang)
+    title_cell.font = Font(name="Calibri", size=16, bold=True)
+    worksheet.row_dimensions[1].height = 21.0
+
+
+def _ensure_kb_layout(worksheet) -> None:
+    from openpyxl.styles import Alignment, Border, Font, Side
+
+    thin = Side(style="thin")
+    header_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    header_font = Font(name="Calibri", size=11, bold=True)
+    header_alignment = Alignment(horizontal="center")
+
+    for column_letter, width in KB_COLUMN_WIDTHS.items():
+        worksheet.column_dimensions[column_letter].width = width
+
+    for col_idx, header in enumerate(KB_CATEGORY_HEADERS, start=1):
+        header_cell = worksheet.cell(KB_HEADER_ROW, col_idx)
+        header_cell.value = header
+        header_cell.font = header_font
+        header_cell.border = header_border
+        header_cell.alignment = header_alignment
+
+    data_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for row_idx in range(KB_DATA_START_ROW, KB_TEMPLATE_LAST_ROW + 1):
+        for col_idx in range(1, KB_COLUMN_COUNT + 1):
+            data_cell = worksheet.cell(row_idx, col_idx)
+            data_cell.border = data_border
+
+
+def _clear_kb_data_area(worksheet) -> None:
+    for row_idx in range(KB_DATA_START_ROW, KB_TEMPLATE_LAST_ROW + 1):
+        for col_idx in range(1, KB_COLUMN_COUNT + 1):
+            worksheet.cell(row_idx, col_idx).value = None
+
+
+def _fill_kb_data_area(worksheet, entries_by_category: Dict[str, List[str]]) -> None:
+    max_rows = max((len(values) for values in entries_by_category.values()), default=0)
+    for row_offset in range(max_rows):
+        row_idx = KB_DATA_START_ROW + row_offset
+        for col_idx, category in enumerate(KNOWLEDGE_CATEGORIES, start=1):
+            values = entries_by_category.get(category, [])
+            if row_offset < len(values):
+                worksheet.cell(row_idx, col_idx, values[row_offset])
+
+
+def _prepare_kb_workbook(org_name: str, lang: str):
+    workbook = _open_kb_template_workbook()
+    worksheet = workbook.active
+    _apply_kb_title(worksheet, org_name, lang)
+    _ensure_kb_layout(worksheet)
+    _clear_kb_data_area(worksheet)
+    return workbook, worksheet
 
 
 def _parse_category_label(label: Any) -> Optional[str]:
@@ -826,40 +905,9 @@ def _parse_category_label(label: Any) -> Optional[str]:
     return None
 
 
-def _write_kb_workbook(
-    org_name: str,
-    lang: str,
-    entries_by_category: Optional[Dict[str, List[str]]] = None,
-) -> bytes:
-    import io
-
-    from openpyxl import Workbook
-
-    workbook = Workbook()
-    worksheet = workbook.active
-    worksheet.title = _kb_sheet_title(lang)
-    worksheet.cell(1, 1, _kb_workbook_title(org_name, lang))
-    worksheet.cell(2, 1, KB_INSTRUCTION)
-
-    for col_idx, header in enumerate(KB_CATEGORY_HEADERS, start=1):
-        worksheet.cell(KB_HEADER_ROW, col_idx, header)
-
-    if entries_by_category:
-        max_rows = max((len(values) for values in entries_by_category.values()), default=0)
-        for row_offset in range(max_rows):
-            row_idx = KB_DATA_START_ROW + row_offset
-            for col_idx, category in enumerate(KNOWLEDGE_CATEGORIES, start=1):
-                values = entries_by_category.get(category, [])
-                if row_offset < len(values):
-                    worksheet.cell(row_idx, col_idx, values[row_offset])
-
-    buffer = io.BytesIO()
-    workbook.save(buffer)
-    return buffer.getvalue()
-
-
 def build_kb_template_excel(org_name: str, lang: str = "zh") -> bytes:
-    return _write_kb_workbook(org_name, lang)
+    workbook, _worksheet = _prepare_kb_workbook(org_name, lang)
+    return _save_workbook_bytes(workbook)
 
 
 def build_kb_export_excel(
@@ -876,7 +924,10 @@ def build_kb_export_excel(
         if category not in grouped:
             grouped[category] = []
         grouped[category].append(content)
-    return _write_kb_workbook(org_name, lang, grouped)
+
+    workbook, worksheet = _prepare_kb_workbook(org_name, lang)
+    _fill_kb_data_area(worksheet, grouped)
+    return _save_workbook_bytes(workbook)
 
 
 def _load_kb_worksheet(file_bytes: bytes):
@@ -887,32 +938,46 @@ def _load_kb_worksheet(file_bytes: bytes):
     return load_workbook(io.BytesIO(file_bytes)).active
 
 
-def _find_kb_header_row(worksheet) -> Optional[int]:
+def _map_kb_header_columns(worksheet, header_row: int) -> Dict[int, str]:
+    categories_by_col: Dict[int, str] = {}
+    for col_idx in range(1, KB_COLUMN_COUNT + 1):
+        category = _parse_category_label(worksheet.cell(header_row, col_idx).value)
+        if category:
+            categories_by_col[col_idx] = category
+    return categories_by_col
+
+
+def _resolve_kb_header_row(worksheet) -> Optional[int]:
+    """Enterprise KB import always expects bilingual headers on row 3, cols A-G."""
+    row_three = _map_kb_header_columns(worksheet, KB_HEADER_ROW)
+    if (
+        len(row_three) == KB_COLUMN_COUNT
+        and set(row_three.values()) == set(KNOWLEDGE_CATEGORIES)
+        and row_three.get(KB_COLUMN_COUNT) == "其他"
+    ):
+        return KB_HEADER_ROW
+
     for row_idx in range(1, 8):
-        for col_idx in range(1, 20):
-            value = worksheet.cell(row_idx, col_idx).value
-            if value and _parse_category_label(value):
-                matched = 0
-                for scan_col in range(1, 20):
-                    if _parse_category_label(worksheet.cell(row_idx, scan_col).value):
-                        matched += 1
-                if matched >= 3:
-                    return row_idx
+        if row_idx == KB_HEADER_ROW:
+            continue
+        mapped = _map_kb_header_columns(worksheet, row_idx)
+        if len(mapped) == KB_COLUMN_COUNT and "其他" in mapped.values():
+            return row_idx
     return None
 
 
 def _parse_wide_kb_worksheet(worksheet) -> Optional[List[Dict[str, str]]]:
-    header_row = _find_kb_header_row(worksheet)
+    """
+    Parse enterprise wide-format workbook.
+    - Row 3: category headers including「其他 / Other」(column G)
+    - Row 4+: one knowledge item per cell, grouped by column
+    """
+    header_row = _resolve_kb_header_row(worksheet)
     if not header_row:
         return None
 
-    categories_by_col: Dict[int, str] = {}
-    for col_idx in range(1, worksheet.max_column + 1):
-        category = _parse_category_label(worksheet.cell(header_row, col_idx).value)
-        if category:
-            categories_by_col[col_idx] = category
-
-    if len(categories_by_col) < 3:
+    categories_by_col = _map_kb_header_columns(worksheet, header_row)
+    if "其他" not in categories_by_col.values():
         return None
 
     rows_to_import: List[Dict[str, str]] = []
