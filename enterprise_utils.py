@@ -21,6 +21,11 @@ KB_CATEGORY_HEADERS = [
 ]
 KB_HEADER_ROW = 3
 KB_DATA_START_ROW = 4
+KB_INSTRUCTION = (
+    "请在下方各分类中添加经验条，每条经验占一格，经验条之间请勿隔格 / "
+    "Please add your knowledge in the categories below, with one entry per cell "
+    "and no empty cells in between."
+)
 KB_TEMPLATE_LAST_ROW = 201
 KB_COLUMN_COUNT = len(KNOWLEDGE_CATEGORIES)
 KB_TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "knowledge_base_enterprise.xlsx"
@@ -814,6 +819,10 @@ def _apply_kb_title(worksheet, org_name: str, lang: str) -> None:
     title_cell.value = _kb_workbook_title(org_name, lang)
     title_cell.font = Font(name="Calibri", size=16, bold=True)
     worksheet.row_dimensions[1].height = 21.0
+
+    instruction_cell = worksheet.cell(2, 1)
+    instruction_cell.value = KB_INSTRUCTION
+    instruction_cell.font = Font(name="Calibri", size=10, bold=False)
 
 
 def _ensure_kb_layout(worksheet) -> None:
