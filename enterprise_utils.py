@@ -4,10 +4,12 @@ from __future__ import annotations
 import base64
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import quote
 
 import requests
+
+from kb_translate import bilingualize_kb_content
 
 KNOWLEDGE_CATEGORIES = ["光学", "机械", "材料", "热学", "电气", "控制", "其他"]
 KB_CATEGORY_HEADERS = [
@@ -1081,6 +1083,8 @@ def import_tenant_knowledge_excel(
     file_bytes: bytes,
     *,
     replace_existing: bool = False,
+    translate_to_en: Optional[Callable[[str], str]] = None,
+    translate_to_zh: Optional[Callable[[str], str]] = None,
 ) -> tuple[int, str]:
     if not organization_id:
         return 0, "missing_org_id"
@@ -1108,13 +1112,18 @@ def import_tenant_knowledge_excel(
 
     imported = 0
     for item in rows_to_import:
+        zh_text, en_text = bilingualize_kb_content(
+            item["content"],
+            translate_to_en=translate_to_en,
+            translate_to_zh=translate_to_zh,
+        )
         if add_tenant_knowledge(
             supabase_url,
             headers,
             organization_id,
             item["category"],
-            item["content"],
-            content_en=item["content_en"],
+            zh_text,
+            content_en=en_text,
         ):
             imported += 1
 

@@ -4,6 +4,7 @@ import stripe
 from datetime import datetime, timedelta
 
 from portal_auth import build_app_launch_url
+from kb_translate import bilingualize_kb_content, make_kb_translators
 from enterprise_utils import (
     KNOWLEDGE_CATEGORIES,
     add_org_member,
@@ -92,6 +93,15 @@ AUTH_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
     "Content-Type": "application/json",
 }
+
+
+def _kb_translators():
+    return make_kb_translators(
+        _get_secret("DEEPSEEK_API_KEY"),
+        _get_secret("DEEPSEEK_BASE_URL") or "https://api.deepseek.com",
+        _get_secret("DEEPSEEK_MODEL") or "deepseek-chat",
+    )
+
 
 def supabase_get(table: str, user_id: str = None, id_field: str = "id"):
     url = f"{SUPABASE_URL}/rest/v1/{table}"
@@ -1232,12 +1242,15 @@ def render_org_kb_tab(profile):
         if not uploaded_excel:
             st.warning(t()["kb_upload_excel"])
         else:
+            to_en, to_zh = _kb_translators()
             imported, reason = import_tenant_knowledge_excel(
                 SUPABASE_URL,
                 SERVICE_HEADERS,
                 org_id,
                 uploaded_excel.getvalue(),
                 replace_existing=replace_existing,
+                translate_to_en=to_en,
+                translate_to_zh=to_zh,
             )
             if reason == "ok":
                 st.success(t()["kb_imported"].format(count=imported))
@@ -1277,7 +1290,20 @@ def render_org_kb_tab(profile):
         content = st.text_area(t()["kb_content"])
         submitted = st.form_submit_button(t()["kb_add"], type="primary", use_container_width=True)
         if submitted and content.strip():
-            if add_tenant_knowledge(SUPABASE_URL, SERVICE_HEADERS, org_id, category, content.strip()):
+            to_en, to_zh = _kb_translators()
+            zh_text, en_text = bilingualize_kb_content(
+                content.strip(),
+                translate_to_en=to_en,
+                translate_to_zh=to_zh,
+            )
+            if add_tenant_knowledge(
+                SUPABASE_URL,
+                SERVICE_HEADERS,
+                org_id,
+                category,
+                zh_text,
+                content_en=en_text,
+            ):
                 st.success("已添加" if st.session_state.lang == "zh" else "Added")
                 st.rerun()
 
