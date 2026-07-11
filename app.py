@@ -12,6 +12,7 @@ from enterprise_utils import (
     assign_user_to_org,
     count_org_members,
     create_organization,
+    delete_organization,
     delete_tenant_knowledge,
     find_user_id_by_email,
     get_full_profile,
@@ -211,6 +212,9 @@ TEXTS = {
         "user_assigned": "用户已绑定",
         "assign_by_email": "按邮箱绑定",
         "user_not_found": "未找到该邮箱用户，请先让对方注册 Portal 账号",
+        "delete_org": "删除企业",
+        "delete_org_confirm": "确认删除该企业（将解除所有成员绑定并删除企业知识库）",
+        "org_deleted": "企业已删除",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -324,6 +328,9 @@ Let AI become your Chief Quality Engineer.
         "user_assigned": "User assigned",
         "assign_by_email": "Assign by Email",
         "user_not_found": "Email not found. Ask the user to register on the portal first.",
+        "delete_org": "Delete Organization",
+        "delete_org_confirm": "Confirm delete (unbinds all members and removes tenant knowledge base)",
+        "org_deleted": "Organization deleted",
     }
 }
 
@@ -402,9 +409,12 @@ def render_sidebar():
         profile = None
         if st.session_state.authenticated and st.session_state.user_id != "admin":
             profile = get_user_profile(st.session_state.user_id)
-        enterprise = profile and is_enterprise_user(profile)
+        enterprise = bool(profile and is_enterprise_user(profile))
 
-        sidebar_title = profile.get("organization_name") or t()["enterprise_plan"] if enterprise else t()["sidebar_title"]
+        if enterprise:
+            sidebar_title = profile.get("organization_name") or t()["enterprise_plan"]
+        else:
+            sidebar_title = t()["sidebar_title"]
         st.title(sidebar_title)
         st.subheader(t()["about_header"])
         st.markdown(t()["about_text"])
@@ -1020,6 +1030,19 @@ def render_platform_enterprise_section(users):
             if update_organization(SUPABASE_URL, SERVICE_HEADERS, org_id, {"max_seats": int(new_max)}):
                 st.success(t()["org_updated"])
                 st.rerun()
+
+        st.markdown("---")
+        confirm_delete = st.checkbox(t()["delete_org_confirm"], key="platform_delete_org_confirm")
+        if st.button(t()["delete_org"], key="platform_delete_org_btn", use_container_width=True, type="primary"):
+            if not confirm_delete:
+                st.warning("请先勾选确认" if st.session_state.lang == "zh" else "Please check the confirmation box first")
+            else:
+                ok, reason = delete_organization(SUPABASE_URL, SERVICE_HEADERS, org_id)
+                if ok:
+                    st.success(t()["org_deleted"])
+                    st.rerun()
+                else:
+                    st.error(f"删除失败: {reason}" if st.session_state.lang == "zh" else f"Delete failed: {reason}")
 
     if orgs:
         st.subheader(t()["assign_user_org"])

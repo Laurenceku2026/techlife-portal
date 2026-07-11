@@ -9,14 +9,6 @@ import streamlit as st
 TOKEN_TTL_SECONDS = 8 * 3600
 
 
-def get_jwt_secret() -> str:
-    secret = st.secrets.get("JWT_SECRET_KEY")
-    if not secret:
-        st.error("缺少配置 JWT_SECRET_KEY，请在 Streamlit secrets 中添加。")
-        st.stop()
-    return secret
-
-
 def _jwt_secret_or_none() -> Optional[str]:
     return st.secrets.get("JWT_SECRET_KEY")
 
@@ -31,7 +23,11 @@ def create_portal_token(
     organization_id: Optional[str] = None,
     organization_name: Optional[str] = None,
     org_role: Optional[str] = None,
-) -> str:
+) -> Optional[str]:
+    secret = _jwt_secret_or_none()
+    if not secret:
+        return None
+
     now = int(time.time())
     payload: Dict[str, Any] = {
         "sub": user_id,
@@ -46,7 +42,10 @@ def create_portal_token(
         payload["organization_id"] = organization_id
         payload["organization_name"] = organization_name or ""
         payload["org_role"] = org_role or "member"
-    return jwt.encode(payload, get_jwt_secret(), algorithm="HS256")
+    try:
+        return jwt.encode(payload, secret, algorithm="HS256")
+    except Exception:
+        return None
 
 
 def verify_portal_token(token: str) -> Optional[Dict[str, Any]]:
@@ -83,7 +82,9 @@ def build_app_launch_url(
         organization_name=organization_name,
         org_role=org_role,
     )
-    params = {"token": token, "lang": lang}
+    params: Dict[str, str] = {"lang": lang}
+    if token:
+        params["token"] = token
     if include_legacy_params:
         params.update(
             {
