@@ -214,6 +214,7 @@ TEXTS = {
         "assign_user_btn": "绑定并设置密码",
         "login_email_hint": "登录用户名为上方邮箱；新用户将自动创建账号，已有用户将重置为上述初始密码",
         "password_required": "请设置至少6位初始密码",
+        "password_reset_failed": "密码设置失败",
         "login_verify_failed": "账号已绑定，但登录验证未通过，请检查 Supabase 配置或联系技术支持",
         "login_verify_ok": "登录验证通过，请用该邮箱和初始密码在门户登录",
         "user_not_found": "未找到该邮箱用户",
@@ -435,6 +436,10 @@ def reset_to_guest_session():
     st.session_state.user_email = None
     st.session_state.show_admin_login = False
     st.session_state.pending_delete_org_id = None
+    if "platform_selected_org_id" in st.session_state:
+        del st.session_state.platform_selected_org_id
+    if "admin_select_user" in st.session_state:
+        del st.session_state.admin_select_user
     if "payment_url" in st.session_state:
         del st.session_state.payment_url
 
@@ -1095,7 +1100,15 @@ def render_platform_enterprise_section(users):
             )
 
         st.caption(t()["selected_org_hint"])
-        org_ids = [org.get("id") for org in orgs]
+        org_ids = [org.get("id") for org in orgs if org.get("id")]
+        if not org_ids:
+            return
+
+        if st.session_state.get("platform_selected_org_id") not in org_ids:
+            st.session_state.platform_selected_org_id = org_ids[0]
+        pending_id = st.session_state.get("pending_delete_org_id")
+        if pending_id and pending_id not in org_ids:
+            st.session_state.pending_delete_org_id = None
 
         def _org_option_label(oid: str) -> str:
             item = org_lookup.get(oid, {})
@@ -1227,6 +1240,12 @@ def render_platform_enterprise_section(users):
         st.exception(exc)
 
 
+def _safe_date_prefix(value, fallback: str = "-") -> str:
+    if not value:
+        return fallback
+    return str(value)[:10]
+
+
 def render_admin_user_section(users, auth_users):
     pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
     enterprise_users = [u for u in users if u.get("subscription_tier") == "enterprise"]
@@ -1257,12 +1276,11 @@ def render_admin_user_section(users, auth_users):
                 "邮箱确认": "✅" if ai.get("email_confirmed_at") else "❌",
                 t()["subscription_col"]: tier_label,
                 "剩余次数": user.get("free_trials_remaining", 30),
-                "注册时间": (ai.get("created_at", "-")[:10]) if ai.get("created_at") else "-",
-                "最后登录": (ai.get("last_sign_in_at", "-")[:10]) if ai.get("last_sign_in_at") else "-",
-                "到期时间": user.get("subscription_expires_at", "-")[:10] if user.get("subscription_expires_at") else "-",
+                "注册时间": _safe_date_prefix(ai.get("created_at")),
+                "最后登录": _safe_date_prefix(ai.get("last_sign_in_at")),
+                "到期时间": _safe_date_prefix(user.get("subscription_expires_at")),
             })
-        with st.container(height=400):
-            st.dataframe(user_data, use_container_width=True)
+        st.dataframe(user_data, use_container_width=True, height=400)
     else:
         st.info("暂无用户数据")
 
@@ -1271,12 +1289,14 @@ def render_admin_user_section(users, auth_users):
 
     if users:
         user_options = [f"{u.get('email')} ({u.get('subscription_tier')})" for u in users]
+        if st.session_state.get("admin_select_user") not in user_options:
+            st.session_state.admin_select_user = user_options[0]
         selected = st.selectbox(t()["select_user"], user_options, key="admin_select_user")
-        selected_email = selected.split(" ")[0]
+        selected_email = selected.split(" (")[0]
         selected_user = next((u for u in users if u.get("email") == selected_email), None)
 
         if selected_user:
-            col_s1, col_s2 = st.columns(2)
+            col_s1, col_s2, col_s3 = st.columns(3)
             with col_s1:
                 tier_choices = ["free", "pro", "enterprise"]
                 current_tier = selected_user.get("subscription_tier", "free")
@@ -1290,14 +1310,21 @@ def render_admin_user_section(users, auth_users):
                     t()["set_trials"], min_value=0, max_value=100,
                     value=selected_user.get("free_trials_remaining", 30), key="admin_new_trials",
                 )
+            with col_s3:
+                admin_months = st.number_input(
+                    "Pro 月数" if st.session_state.lang == "zh" else "Pro months",
+                    min_value=1, max_value=12, value=1, key="admin_months",
+                    disabled=new_tier != "pro",
+                )
 
             col_b1, col_b2 = st.columns(2)
             with col_b1:
                 if st.button(t()["update_btn"], use_container_width=True, key="admin_update_btn", type="primary"):
                     update_data = {"subscription_tier": new_tier, "free_trials_remaining": new_trials}
                     if new_tier == "pro":
-                        months = st.number_input("月数", min_value=1, max_value=12, value=1, key="admin_months")
-                        update_data["subscription_expires_at"] = (datetime.now() + timedelta(days=30 * months)).isoformat()
+                        update_data["subscription_expires_at"] = (
+                            datetime.now() + timedelta(days=30 * int(admin_months))
+                        ).isoformat()
                     else:
                         update_data["subscription_expires_at"] = None
                     patch_resp = supabase_patch("profiles", selected_user.get("id"), update_data)
@@ -1344,26 +1371,38 @@ def render_admin_panel():
             auth_response = requests.get(
                 f"{SUPABASE_URL}/auth/v1/admin/users",
                 headers=SERVICE_HEADERS,
+                params={"page": 1, "per_page": 200},
+                timeout=15,
             )
             if auth_response.status_code == 200:
                 data = auth_response.json()
                 for u in _parse_auth_users(data):
-                    auth_users[u.get("id")] = {
-                        "created_at": u.get("created_at", ""),
-                        "last_sign_in_at": u.get("last_sign_in_at", ""),
-                        "email_confirmed_at": u.get("email_confirmed_at", ""),
-                    }
+                    if u.get("id"):
+                        auth_users[u.get("id")] = {
+                            "created_at": u.get("created_at", ""),
+                            "last_sign_in_at": u.get("last_sign_in_at", ""),
+                            "email_confirmed_at": u.get("email_confirmed_at", ""),
+                        }
         except Exception as e:
             st.warning(f"获取用户详细信息失败: {e}")
 
         tab_users, tab_orgs = st.tabs([t()["user_mgmt_tab"], t()["org_mgmt"]])
         with tab_users:
-            render_admin_user_section(users, auth_users)
+            try:
+                render_admin_user_section(users, auth_users)
+            except Exception as exc:
+                st.error("用户管理加载失败" if st.session_state.lang == "zh" else "Failed to load user management")
+                st.exception(exc)
         with tab_orgs:
-            render_platform_enterprise_section(users)
+            try:
+                render_platform_enterprise_section(users)
+            except Exception as exc:
+                st.error("企业管理加载失败" if st.session_state.lang == "zh" else "Failed to load organization management")
+                st.exception(exc)
 
     except Exception as e:
         st.warning(f"无法获取数据: {e}")
+        st.exception(e)
     
     st.markdown("---")
     if st.button(t()["exit_admin"], use_container_width=True, key="admin_exit"):
