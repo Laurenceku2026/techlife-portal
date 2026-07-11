@@ -1,6 +1,7 @@
 """Enterprise organizations, members, and tenant knowledge base helpers."""
 from __future__ import annotations
 
+import base64
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
@@ -8,6 +9,8 @@ from urllib.parse import quote
 import requests
 
 KNOWLEDGE_CATEGORIES = ["光学", "机械", "材料", "热学", "电气", "控制"]
+LOGO_MAX_BYTES = 500_000
+LOGO_ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 
 
 def _parse_auth_users(data: Any) -> List[Dict[str, Any]]:
@@ -126,6 +129,7 @@ def get_full_profile(
         "organization_id": None,
         "org_role": None,
         "organization_name": None,
+        "organization_logo_url": None,
         "max_seats": None,
     }
     if not user_id or user_id == "admin":
@@ -156,11 +160,12 @@ def get_full_profile(
             supabase_url,
             headers,
             "organizations",
-            select="id,name,max_seats,is_active,contract_expires_at",
+            select="id,name,max_seats,is_active,contract_expires_at,logo_url",
             filters={"id": org_id},
         )
         if org_rows:
             profile["organization_name"] = org_rows[0].get("name")
+            profile["organization_logo_url"] = org_rows[0].get("logo_url")
             profile["max_seats"] = org_rows[0].get("max_seats")
             profile["org_is_active"] = org_rows[0].get("is_active", True)
     return profile
@@ -210,6 +215,61 @@ def update_organization(
 ) -> bool:
     ok, _ = supabase_update(supabase_url, headers, "organizations", org_id, data)
     return ok
+
+
+def set_organization_logo(
+    supabase_url: str,
+    headers: Dict[str, str],
+    org_id: str,
+    file_bytes: bytes,
+    content_type: str,
+) -> tuple[bool, str]:
+    if not org_id:
+        return False, "missing_org_id"
+    if not file_bytes:
+        return False, "empty_file"
+    if len(file_bytes) > LOGO_MAX_BYTES:
+        return False, "too_large"
+
+    normalized_type = (content_type or "").lower()
+    if normalized_type == "image/jpg":
+        normalized_type = "image/jpeg"
+    if normalized_type not in LOGO_ALLOWED_TYPES:
+        return False, "invalid_type"
+
+    encoded = base64.b64encode(file_bytes).decode("ascii")
+    data_url = f"data:{normalized_type};base64,{encoded}"
+    ok, detail = supabase_update(
+        supabase_url,
+        headers,
+        "organizations",
+        org_id,
+        {"logo_url": data_url},
+    )
+    if ok:
+        return True, ""
+    if "logo_url" in (detail or "") and "column" in (detail or "").lower():
+        return False, "missing_column"
+    return False, detail or "update_failed"
+
+
+def clear_organization_logo(
+    supabase_url: str,
+    headers: Dict[str, str],
+    org_id: str,
+) -> tuple[bool, str]:
+    if not org_id:
+        return False, "missing_org_id"
+    ok, detail = supabase_update(
+        supabase_url,
+        headers,
+        "organizations",
+        org_id,
+        {"logo_url": None},
+    )
+    if ok:
+        return True, ""
+    return False, detail or "update_failed"
 
 
 def delete_organization(

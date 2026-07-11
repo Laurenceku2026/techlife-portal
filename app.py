@@ -11,6 +11,7 @@ from enterprise_utils import (
     assign_or_provision_org_user,
     assign_user_to_org,
     change_user_password,
+    clear_organization_logo,
     count_org_members,
     create_organization,
     delete_organization,
@@ -23,6 +24,7 @@ from enterprise_utils import (
     list_organizations,
     list_tenant_knowledge,
     remove_org_member,
+    set_organization_logo,
     update_organization,
     verify_login_credentials,
     _parse_auth_users,
@@ -235,6 +237,16 @@ TEXTS = {
         "password_changed": "密码已更新，请使用新密码登录",
         "current_password_wrong": "当前密码不正确",
         "password_mismatch": "两次输入的新密码不一致",
+        "org_logo": "企业 Logo",
+        "upload_logo": "上传 Logo（PNG/JPG/WebP，不超过 500KB）",
+        "save_logo": "保存 Logo",
+        "remove_logo": "删除 Logo",
+        "logo_saved": "Logo 已更新",
+        "logo_removed": "Logo 已删除",
+        "logo_too_large": "图片过大，请小于 500KB",
+        "logo_invalid_type": "仅支持 PNG、JPG 或 WebP",
+        "logo_migration_hint": "请先在 Supabase 执行 supabase_migration_org_logo.sql",
+        "settings_tab": "企业设置",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -369,6 +381,16 @@ Let AI become your Chief Quality Engineer.
         "password_changed": "Password updated. Please sign in with your new password.",
         "current_password_wrong": "Current password is incorrect",
         "password_mismatch": "New passwords do not match",
+        "org_logo": "Organization Logo",
+        "upload_logo": "Upload logo (PNG/JPG/WebP, max 500KB)",
+        "save_logo": "Save Logo",
+        "remove_logo": "Remove Logo",
+        "logo_saved": "Logo updated",
+        "logo_removed": "Logo removed",
+        "logo_too_large": "Image too large. Max 500KB.",
+        "logo_invalid_type": "Only PNG, JPG, or WebP is supported",
+        "logo_migration_hint": "Run supabase_migration_org_logo.sql in Supabase first",
+        "settings_tab": "Settings",
     }
 }
 
@@ -490,7 +512,75 @@ def safe_get_profile(user_id: str):
             "organization_id": None,
             "org_role": None,
             "organization_name": None,
+            "organization_logo_url": None,
         }
+
+
+def render_enterprise_branding(profile):
+    org_name = profile.get("organization_name")
+    if not org_name:
+        return
+
+    logo_url = profile.get("organization_logo_url")
+    col_left, col_center, col_right = st.columns([1, 2, 1])
+    with col_center:
+        if logo_url:
+            st.image(logo_url, width=180)
+        st.markdown(
+            f"<h1 style='text-align: center; margin: 0 0 1rem 0; font-weight: 700;'>{org_name}</h1>",
+            unsafe_allow_html=True,
+        )
+
+
+def _handle_logo_upload_result(ok: bool, reason: str):
+    if ok:
+        st.success(t()["logo_saved"])
+        st.rerun()
+    elif reason == "too_large":
+        st.error(t()["logo_too_large"])
+    elif reason == "invalid_type":
+        st.error(t()["logo_invalid_type"])
+    elif reason == "missing_column":
+        st.error(t()["logo_migration_hint"])
+    elif reason == "empty_file":
+        st.warning(t()["upload_logo"])
+    else:
+        st.error(reason or t()["logo_invalid_type"])
+
+
+def render_org_logo_section(org_id: str, logo_url, key_prefix: str):
+    st.subheader(t()["org_logo"])
+    if logo_url:
+        st.image(logo_url, width=140)
+    uploaded = st.file_uploader(
+        t()["upload_logo"],
+        type=["png", "jpg", "jpeg", "webp"],
+        key=f"{key_prefix}_logo_uploader",
+    )
+    col_save, col_remove = st.columns(2)
+    with col_save:
+        if st.button(t()["save_logo"], key=f"{key_prefix}_save_logo", use_container_width=True, type="primary"):
+            if not uploaded:
+                st.warning(t()["upload_logo"])
+            else:
+                ok, reason = set_organization_logo(
+                    SUPABASE_URL,
+                    SERVICE_HEADERS,
+                    org_id,
+                    uploaded.getvalue(),
+                    uploaded.type or "",
+                )
+                _handle_logo_upload_result(ok, reason)
+    with col_remove:
+        if logo_url and st.button(t()["remove_logo"], key=f"{key_prefix}_remove_logo", use_container_width=True):
+            ok, reason = clear_organization_logo(SUPABASE_URL, SERVICE_HEADERS, org_id)
+            if ok:
+                st.success(t()["logo_removed"])
+                st.rerun()
+            elif reason == "missing_column":
+                st.error(t()["logo_migration_hint"])
+            else:
+                st.error(reason or t()["logo_invalid_type"])
 
 
 def render_sidebar_change_password():
@@ -985,13 +1075,7 @@ def render_main_app():
         org_name = profile.get("organization_name") if enterprise else None
 
         if org_name:
-            st.markdown(
-                (
-                    f"<h1 style='text-align: center; margin: 0 0 1rem 0; font-weight: 700;'>"
-                    f"🏢 {org_name}</h1>"
-                ),
-                unsafe_allow_html=True,
-            )
+            render_enterprise_branding(profile)
 
         col_welcome, col_refresh = st.columns([11, 1])
         with col_welcome:
@@ -1115,11 +1199,17 @@ def render_org_admin_panel():
     org_name = profile.get("organization_name") or t()["enterprise_plan"]
     st.markdown(f"## ⚙️ {t()['org_admin_panel']} — {org_name}")
 
-    tab_members, tab_kb = st.tabs([t()["members_tab"], t()["kb_tab"]])
+    tab_members, tab_kb, tab_settings = st.tabs([t()["members_tab"], t()["kb_tab"], t()["settings_tab"]])
     with tab_members:
         render_org_members_tab(profile)
     with tab_kb:
         render_org_kb_tab(profile)
+    with tab_settings:
+        render_org_logo_section(
+            profile.get("organization_id"),
+            profile.get("organization_logo_url"),
+            "org_admin",
+        )
 
     st.markdown("---")
     if st.button(t()["exit_org_admin"], use_container_width=True, key="org_admin_exit"):
@@ -1242,6 +1332,14 @@ def render_platform_enterprise_section(users):
                 st.success(t()["org_updated"])
                 st.rerun()
 
+        st.markdown("---")
+        render_org_logo_section(
+            selected_org_id,
+            selected_org.get("logo_url"),
+            "platform",
+        )
+
+        st.markdown("---")
         st.subheader(t()["assign_user_org"])
         with st.form("platform_assign_user_form", border=True):
             assign_email = st.text_input(t()["member_email"], key="platform_assign_email")
