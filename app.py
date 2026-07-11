@@ -748,9 +748,12 @@ def render_sidebar():
 
             if st.session_state.user_id == "admin":
                 st.caption("平台管理员" if st.session_state.lang == "zh" else "Platform Admin")
-                if st.button(t()["logout"], use_container_width=True, key="admin_sidebar_logout"):
-                    request_guest_reset()
-                    st.rerun()
+                st.button(
+                    t()["logout"],
+                    use_container_width=True,
+                    key="admin_sidebar_logout",
+                    on_click=request_guest_reset,
+                )
             else:
                 if profile is None:
                     profile = safe_get_profile(st.session_state.user_id)
@@ -1435,7 +1438,7 @@ def render_platform_org_kb_section():
         return
 
     if st.session_state.get("platform_kb_org_id") not in org_ids:
-        st.session_state.platform_kb_org_id = org_ids[0]
+        st.session_state.pop("platform_kb_org_id", None)
 
     def _org_kb_label(oid: str) -> str:
         org = org_lookup.get(oid, {})
@@ -1819,24 +1822,32 @@ def render_admin_panel():
         except Exception as e:
             st.warning(f"获取用户详细信息失败: {e}")
 
-        tab_users, tab_orgs, tab_kb = st.tabs([
-            t()["user_mgmt_tab"],
-            t()["org_mgmt"],
-            t()["platform_kb_tab"],
-        ])
-        with tab_users:
+        section_labels = {
+            "users": t()["user_mgmt_tab"],
+            "orgs": t()["org_mgmt"],
+            "kb": t()["platform_kb_tab"],
+        }
+        selected_section = st.radio(
+            "platform_admin_section",
+            list(section_labels.keys()),
+            format_func=lambda key: section_labels[key],
+            horizontal=True,
+            key="platform_admin_section",
+            label_visibility="collapsed",
+        )
+        if selected_section == "users":
             try:
                 render_admin_user_section(users, auth_users)
             except Exception as exc:
                 st.error("用户管理加载失败" if st.session_state.lang == "zh" else "Failed to load user management")
                 st.exception(exc)
-        with tab_orgs:
+        elif selected_section == "orgs":
             try:
                 render_platform_enterprise_section(users)
             except Exception as exc:
                 st.error("企业管理加载失败" if st.session_state.lang == "zh" else "Failed to load organization management")
                 st.exception(exc)
-        with tab_kb:
+        else:
             try:
                 render_platform_org_kb_section()
             except Exception as exc:
@@ -1848,14 +1859,20 @@ def render_admin_panel():
         st.exception(e)
     
     st.markdown("---")
-    if st.button(t()["exit_admin"], use_container_width=True, key="admin_exit"):
-        request_guest_reset()
-        st.rerun()
+    st.button(
+        t()["exit_admin"],
+        use_container_width=True,
+        key="admin_exit",
+        on_click=request_guest_reset,
+    )
 
 def main():
     try:
         apply_pending_guest_reset()
         apply_pending_org_admin_exit()
+        if not st.session_state.get("authenticated"):
+            st.session_state.admin_mode = False
+            st.session_state.org_admin_mode = False
         if st.session_state.pop("_password_changed_flash", False):
             st.success(t()["password_changed"])
         render_sidebar()
