@@ -234,6 +234,10 @@ TEXTS = {
         "kb_missing_columns": "缺少第3行分类表头（光学…其他/Other）",
         "kb_no_valid_rows": "未找到可导入的有效数据行",
         "user_mgmt_tab": "用户管理",
+        "platform_kb_tab": "企业知识库",
+        "platform_kb_empty": "该企业暂无知识库条目",
+        "platform_kb_count": "共 {count} 条记录",
+        "platform_no_orgs_kb": "暂无企业，请先在「企业管理」中创建",
         "seat_limit_reached": "已达席位上限",
         "member_added": "成员已添加",
         "member_removed": "成员已移出企业",
@@ -390,6 +394,10 @@ Let AI become your Chief Quality Engineer.
         "kb_missing_columns": "Required wide-format headers missing on row 3 (Optical … Other)",
         "kb_no_valid_rows": "No valid rows found to import",
         "user_mgmt_tab": "User Management",
+        "platform_kb_tab": "Org Knowledge Bases",
+        "platform_kb_empty": "No knowledge entries for this organization",
+        "platform_kb_count": "{count} record(s)",
+        "platform_no_orgs_kb": "No organizations yet. Create one under Organizations first.",
         "seat_limit_reached": "Seat limit reached",
         "member_added": "Member added",
         "member_removed": "Member removed",
@@ -1414,6 +1422,68 @@ def render_org_admin_panel():
     )
 
 
+def render_platform_org_kb_section():
+    orgs = list_organizations(SUPABASE_URL, SERVICE_HEADERS)
+    if not orgs:
+        st.info(t()["platform_no_orgs_kb"])
+        return
+
+    org_lookup = {org.get("id"): org for org in orgs if org.get("id")}
+    org_ids = list(org_lookup.keys())
+    if not org_ids:
+        st.info(t()["platform_no_orgs_kb"])
+        return
+
+    if st.session_state.get("platform_kb_org_id") not in org_ids:
+        st.session_state.platform_kb_org_id = org_ids[0]
+
+    def _org_kb_label(oid: str) -> str:
+        org = org_lookup.get(oid, {})
+        short_id = (oid or "")[:8]
+        return f"{org.get('name', '-')} | {short_id}"
+
+    selected_org_id = st.selectbox(
+        t()["select_org"],
+        org_ids,
+        format_func=_org_kb_label,
+        key="platform_kb_org_id",
+    )
+    selected_org = org_lookup.get(selected_org_id, {})
+    org_name = selected_org.get("name") or t()["enterprise_plan"]
+    entries = list_tenant_knowledge(SUPABASE_URL, SERVICE_HEADERS, selected_org_id)
+
+    st.markdown(f"### {t()['kb_db_title'].format(org_name=org_name)}")
+    st.caption(t()["platform_kb_count"].format(count=len(entries)))
+
+    lang = st.session_state.lang
+    safe_org = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in org_name)
+    export_name = f"{safe_org}_knowledge_export.xlsx"
+
+    st.download_button(
+        t()["kb_download_data"],
+        data=build_kb_export_excel(entries, org_name, lang),
+        file_name=export_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        key="platform_kb_download_btn",
+    )
+
+    st.markdown("---")
+    if not entries:
+        st.info(t()["platform_kb_empty"])
+        return
+
+    kb_rows = [
+        {
+            "ID": e.get("id"),
+            t()["kb_category"]: e.get("category"),
+            t()["kb_content"]: (e.get("content") or "")[:200],
+        }
+        for e in entries
+    ]
+    st.dataframe(kb_rows, use_container_width=True)
+
+
 def render_platform_enterprise_section(users):
     try:
         orgs = list_organizations(SUPABASE_URL, SERVICE_HEADERS)
@@ -1749,7 +1819,11 @@ def render_admin_panel():
         except Exception as e:
             st.warning(f"获取用户详细信息失败: {e}")
 
-        tab_users, tab_orgs = st.tabs([t()["user_mgmt_tab"], t()["org_mgmt"]])
+        tab_users, tab_orgs, tab_kb = st.tabs([
+            t()["user_mgmt_tab"],
+            t()["org_mgmt"],
+            t()["platform_kb_tab"],
+        ])
         with tab_users:
             try:
                 render_admin_user_section(users, auth_users)
@@ -1761,6 +1835,12 @@ def render_admin_panel():
                 render_platform_enterprise_section(users)
             except Exception as exc:
                 st.error("企业管理加载失败" if st.session_state.lang == "zh" else "Failed to load organization management")
+                st.exception(exc)
+        with tab_kb:
+            try:
+                render_platform_org_kb_section()
+            except Exception as exc:
+                st.error("企业知识库加载失败" if st.session_state.lang == "zh" else "Failed to load organization knowledge bases")
                 st.exception(exc)
 
     except Exception as e:
