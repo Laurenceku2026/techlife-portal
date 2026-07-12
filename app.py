@@ -27,6 +27,8 @@ from enterprise_utils import (
     clear_organization_logo,
     count_org_members,
     create_organization,
+    organization_display_name,
+    set_organization_names,
     contract_expires_at_from_date,
     contract_expires_after_years,
     parse_contract_expires_date,
@@ -225,6 +227,10 @@ TEXTS = {
         "org_mgmt": "企业管理",
         "create_org": "创建企业",
         "org_name": "企业名称",
+        "org_name_zh": "企业名称（中文）",
+        "org_name_en": "企业名称（英文）",
+        "org_name_required": "请至少填写中文或英文企业名称",
+        "org_names_migration_hint": "请先在 Supabase 执行 supabase_migration_org_names.sql",
         "max_seats": "席位上限",
         "contract_years": "使用年限（年）",
         "contract_expires": "到期日期",
@@ -408,6 +414,10 @@ Let AI be your Chief Product Development Engineer.
         "org_mgmt": "Organizations",
         "create_org": "Create Organization",
         "org_name": "Organization Name",
+        "org_name_zh": "Organization name (Chinese)",
+        "org_name_en": "Organization name (English)",
+        "org_name_required": "Enter at least a Chinese or English organization name",
+        "org_names_migration_hint": "Run supabase_migration_org_names.sql in Supabase first",
         "max_seats": "Max Seats",
         "contract_years": "Contract term (years)",
         "contract_expires": "Expiry date",
@@ -656,9 +666,12 @@ PLATFORM_ADMIN_WIDGET_KEYS = (
     "org_minus_btn",
     "confirm_delete_org_btn",
     "cancel_delete_org_btn",
+    "platform_org_name_zh",
+    "platform_org_name_en",
     "platform_org_max_seats",
     "platform_org_contract_expires",
     "platform_update_org_btn",
+    "platform_save_names_btn",
     "platform_org_enabled_apps",
     "platform_org_apps_save_btn",
     "platform_assign_email",
@@ -709,6 +722,7 @@ ORG_ADMIN_WIDGET_KEYS = (
     "org_admin_logo_uploader",
     "org_admin_save_logo",
     "org_admin_remove_logo",
+    "org_admin_save_names_btn",
     "org_admin_exit",
 )
 
@@ -732,6 +746,9 @@ ORG_ADMIN_SECTION_WIDGET_KEYS = {
         "org_kb_add_content",
     ),
     "settings": (
+        "org_admin_org_name_zh",
+        "org_admin_org_name_en",
+        "org_admin_save_names_btn",
         "org_admin_logo_uploader",
         "org_admin_save_logo",
         "org_admin_remove_logo",
@@ -741,7 +758,7 @@ ORG_ADMIN_SECTION_WIDGET_KEYS = {
 ORG_ADMIN_SECTION_KEY_PREFIXES = {
     "members": ("org_member_", "org_remove_", "org_add_member"),
     "kb": ("kb_", "org_kb_"),
-    "settings": ("org_admin_logo", "org_admin_save", "org_admin_remove"),
+    "settings": ("org_admin_org_name", "org_admin_logo", "org_admin_save", "org_admin_remove"),
 }
 
 ORG_ADMIN_SECTION_FORM_PREFIXES = {
@@ -868,6 +885,51 @@ def _welcome_display_name(email: Optional[str]) -> str:
     return local.capitalize()
 
 
+def profile_organization_name(profile, lang=None):
+    if not profile:
+        return ""
+    return organization_display_name(
+        lang=lang or st.session_state.get("lang", "zh"),
+        name_zh=profile.get("organization_name_zh"),
+        name_en=profile.get("organization_name_en"),
+        name=profile.get("organization_name"),
+    )
+
+
+def sync_org_name_widget_state(org_id, org, prefix: str):
+    if st.session_state.get(f"_{prefix}_names_org_id") != org_id:
+        st.session_state[f"_{prefix}_names_org_id"] = org_id
+        st.session_state[f"{prefix}_org_name_zh"] = (org.get("name_zh") or org.get("name") or "")
+        st.session_state[f"{prefix}_org_name_en"] = org.get("name_en") or ""
+
+
+def render_organization_names_editor(org_id, org, key_prefix: str):
+    sync_org_name_widget_state(org_id, org, key_prefix)
+    col_zh, col_en = st.columns(2)
+    with col_zh:
+        name_zh = st.text_input(t()["org_name_zh"], key=f"{key_prefix}_org_name_zh")
+    with col_en:
+        name_en = st.text_input(t()["org_name_en"], key=f"{key_prefix}_org_name_en")
+    if st.button(t()["update_btn"], key=f"{key_prefix}_save_names_btn", use_container_width=True):
+        ok, reason = set_organization_names(
+            SUPABASE_URL,
+            SERVICE_HEADERS,
+            org_id,
+            name_zh,
+            name_en,
+        )
+        if ok:
+            st.success(t()["org_updated"])
+            st.rerun()
+        elif reason == "name_required":
+            st.warning(t()["org_name_required"])
+        elif reason == "missing_column":
+            st.error(t()["org_names_migration_hint"])
+        else:
+            st.error(reason or t()["org_names_migration_hint"])
+    return name_zh, name_en
+
+
 def safe_get_profile(user_id: str):
     try:
         return get_user_profile(user_id)
@@ -879,12 +941,14 @@ def safe_get_profile(user_id: str):
             "organization_id": None,
             "org_role": None,
             "organization_name": None,
+            "organization_name_zh": None,
+            "organization_name_en": None,
             "organization_logo_url": None,
         }
 
 
 def render_enterprise_branding(profile):
-    org_name = profile.get("organization_name")
+    org_name = profile_organization_name(profile)
     if not org_name:
         return
 
@@ -995,7 +1059,7 @@ def render_sidebar():
         enterprise = bool(profile and is_enterprise_user(profile))
 
         if enterprise:
-            org_name = profile.get("organization_name") or t()["enterprise_plan"]
+            org_name = profile_organization_name(profile) or t()["enterprise_plan"]
             logo_url = profile.get("organization_logo_url")
             st.markdown(
                 enterprise_brand_markup(org_name, logo_url, variant="sidebar"),
@@ -1379,7 +1443,7 @@ def render_app_navigation(profile, tier, remaining):
     else:
         enabled_keys = list(PORTAL_APP_KEYS)
 
-    org_name = profile.get("organization_name")
+    org_name = profile_organization_name(profile, lang=lang)
     org_role = profile.get("org_role")
     lang = st.session_state.lang
 
@@ -1407,6 +1471,8 @@ def render_app_navigation(profile, tier, remaining):
                     remaining,
                     organization_id=org_id,
                     organization_name=org_name,
+                    organization_name_zh=profile.get("organization_name_zh"),
+                    organization_name_en=profile.get("organization_name_en"),
                     org_role=org_role,
                 )
                 button_html = f'''
@@ -1436,7 +1502,7 @@ def render_main_app():
         remaining = profile.get("free_trials_remaining", 30)
         total_usage = get_user_total_usage(st.session_state.user_id)
         enterprise = is_enterprise_user(profile)
-        org_name = profile.get("organization_name") if enterprise else None
+        org_name = profile_organization_name(profile) if enterprise else None
 
         if org_name:
             render_enterprise_branding(profile)
@@ -1710,7 +1776,7 @@ def _render_persisted_file_uploaders(active_section: str, *, scope: str) -> Dict
 
 def render_org_kb_tab(profile, *, include_excel_upload: bool = True, uploaded_excel=None):
     org_id = profile.get("organization_id")
-    org_name = profile.get("organization_name") or t()["enterprise_plan"]
+    org_name = profile_organization_name(profile) or t()["enterprise_plan"]
     if not org_id:
         st.warning("未找到企业信息" if st.session_state.lang == "zh" else "Organization not found")
         return
@@ -1729,6 +1795,15 @@ def render_org_settings_tab(profile, *, include_uploader: bool = True, uploaded=
     )
     st.metric(t()["license_expire"], expires_text)
     st.markdown("---")
+    st.subheader(t()["org_name"])
+    org_id = profile.get("organization_id")
+    org_record = {
+        "name_zh": profile.get("organization_name_zh"),
+        "name_en": profile.get("organization_name_en"),
+        "name": profile.get("organization_name"),
+    }
+    render_organization_names_editor(org_id, org_record, "org_admin")
+    st.markdown("---")
     render_org_logo_section(
         profile.get("organization_id"),
         profile.get("organization_logo_url"),
@@ -1745,7 +1820,7 @@ def render_org_admin_panel():
         st.rerun()
         return
 
-    org_name = profile.get("organization_name") or t()["enterprise_plan"]
+    org_name = profile_organization_name(profile) or t()["enterprise_plan"]
     st.markdown(f"## ⚙️ {t()['org_admin_panel']} — {org_name}")
 
     section_labels = {
@@ -1803,7 +1878,8 @@ def render_platform_org_kb_section(*, include_excel_upload: bool = True, uploade
     def _org_kb_label(oid: str) -> str:
         org = org_lookup.get(oid, {})
         short_id = (oid or "")[:8]
-        return f"{org.get('name', '-')} | {short_id}"
+        display_name = organization_display_name(org=org, lang=st.session_state.lang)
+        return f"{display_name or '-'} | {short_id}"
 
     selected_org_id = st.selectbox(
         t()["select_org"],
@@ -1812,7 +1888,7 @@ def render_platform_org_kb_section(*, include_excel_upload: bool = True, uploade
         key="platform_kb_org_id",
     )
     selected_org = org_lookup.get(selected_org_id, {})
-    org_name = selected_org.get("name") or t()["enterprise_plan"]
+    org_name = organization_display_name(org=selected_org, lang=st.session_state.lang) or t()["enterprise_plan"]
     render_tenant_kb_panel(
         selected_org_id,
         org_name,
@@ -1839,7 +1915,11 @@ def render_platform_enterprise_section(users):
 
         st.subheader(t()["create_org"])
         with st.form("platform_create_org", border=True):
-            org_name = st.text_input(t()["org_name"])
+            col_name_zh, col_name_en = st.columns(2)
+            with col_name_zh:
+                create_name_zh = st.text_input(t()["org_name_zh"])
+            with col_name_en:
+                create_name_en = st.text_input(t()["org_name_en"])
             max_seats = st.number_input(t()["max_seats"], min_value=1, max_value=500, value=10)
             contract_years = st.number_input(
                 t()["contract_years"],
@@ -1848,18 +1928,22 @@ def render_platform_enterprise_section(users):
                 value=DEFAULT_CONTRACT_YEARS,
             )
             submitted = st.form_submit_button(t()["create_org"], type="primary", use_container_width=True)
-            if submitted and org_name.strip():
-                created = create_organization(
-                    SUPABASE_URL,
-                    SERVICE_HEADERS,
-                    org_name.strip(),
-                    int(max_seats),
-                    contract_years=int(contract_years),
-                )
-                if created:
-                    st.session_state.pending_delete_org_id = None
-                    st.success(t()["org_created"])
-                    st.rerun()
+            if submitted:
+                if not (create_name_zh.strip() or create_name_en.strip()):
+                    st.warning(t()["org_name_required"])
+                else:
+                    created = create_organization(
+                        SUPABASE_URL,
+                        SERVICE_HEADERS,
+                        int(max_seats),
+                        name_zh=create_name_zh,
+                        name_en=create_name_en,
+                        contract_years=int(contract_years),
+                    )
+                    if created:
+                        st.session_state.pending_delete_org_id = None
+                        st.success(t()["org_created"])
+                        st.rerun()
 
         if not orgs:
             return
@@ -1872,7 +1956,8 @@ def render_platform_enterprise_section(users):
             org_lookup[org_id] = {**org, "member_count": member_count}
             enabled_count = len(org_enabled_apps(org))
             org_rows.append({
-                t()["org_name"]: org.get("name"),
+                t()["org_name_zh"]: (org.get("name_zh") or org.get("name") or "-"),
+                t()["org_name_en"]: org.get("name_en") or "-",
                 t()["contract_expires_col"]: format_contract_expires(
                     org.get("contract_expires_at"),
                     fallback=t()["contract_expires_unset"],
@@ -1913,8 +1998,9 @@ def render_platform_enterprise_section(users):
                 item.get("contract_expires_at"),
                 fallback=t()["contract_expires_unset"],
             )
+            display_name = organization_display_name(org=item, lang=st.session_state.lang)
             return (
-                f"{item.get('name', '-')} | {t()['contract_expires_col']}: {expires_label} | "
+                f"{display_name or '-'} | {t()['contract_expires_col']}: {expires_label} | "
                 f"{item.get('member_count', 0)}/{item.get('max_seats', 0)} | {short_id}"
             )
 
@@ -1928,12 +2014,16 @@ def render_platform_enterprise_section(users):
 
         selected_org = org_lookup.get(selected_org_id, {})
 
+        st.markdown("---")
+        st.subheader(t()["org_name"])
+        render_organization_names_editor(selected_org_id, selected_org, "platform")
+
         if minus_clicked and selected_org_id:
             st.session_state.pending_delete_org_id = selected_org_id
 
         pending_id = st.session_state.get("pending_delete_org_id")
         if pending_id and pending_id in org_lookup:
-            pending_name = org_lookup[pending_id].get("name", pending_id)
+            pending_name = organization_display_name(org=org_lookup[pending_id], lang=st.session_state.lang) or pending_id
             st.warning(f"{t()['pending_delete']}: {pending_name}")
             col_confirm, col_cancel = st.columns(2)
             with col_confirm:

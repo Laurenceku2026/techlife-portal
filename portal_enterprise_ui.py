@@ -17,10 +17,21 @@ def qp_first(query_params: Any, key: str) -> str:
     return val or ""
 
 
+def _resolve_organization_display_name(lang: str = "zh") -> str:
+    name_zh = (st.session_state.get("organization_name_zh") or "").strip()
+    name_en = (st.session_state.get("organization_name_en") or "").strip()
+    legacy = (st.session_state.get("organization_name") or "").strip()
+    if lang == "en":
+        return name_en or name_zh or legacy
+    return name_zh or name_en or legacy
+
+
 def ensure_enterprise_session_defaults() -> None:
     defaults = {
         "organization_id": None,
         "organization_name": "",
+        "organization_name_zh": "",
+        "organization_name_en": "",
         "organization_logo_url": "",
         "_enterprise_branding_loaded": False,
     }
@@ -52,6 +63,10 @@ def apply_portal_token(
     if payload.get("organization_id"):
         st.session_state.organization_id = payload["organization_id"]
         st.session_state._enterprise_branding_loaded = False
+    if payload.get("organization_name_zh"):
+        st.session_state.organization_name_zh = payload["organization_name_zh"]
+    if payload.get("organization_name_en"):
+        st.session_state.organization_name_en = payload["organization_name_en"]
     if payload.get("organization_name"):
         st.session_state.organization_name = payload["organization_name"]
     if payload.get("org_role"):
@@ -76,7 +91,7 @@ def load_enterprise_branding(supabase_url: str, headers: Dict[str, str]) -> None
     org_id = st.session_state.get("organization_id")
     logo_url = ""
     try:
-        query = f"id=eq.{quote(str(org_id), safe='')}&select=name,logo_url"
+        query = f"id=eq.{quote(str(org_id), safe='')}&select=name,name_zh,name_en,logo_url"
         response = requests.get(
             f"{supabase_url}/rest/v1/organizations?{query}",
             headers=headers,
@@ -84,9 +99,15 @@ def load_enterprise_branding(supabase_url: str, headers: Dict[str, str]) -> None
         )
         if response.status_code == 200 and response.json():
             row = response.json()[0]
-            name = (row.get("name") or "").strip()
-            if name:
-                st.session_state.organization_name = name
+            name_zh = (row.get("name_zh") or row.get("name") or "").strip()
+            name_en = (row.get("name_en") or "").strip()
+            legacy = (row.get("name") or "").strip()
+            if name_zh:
+                st.session_state.organization_name_zh = name_zh
+            if name_en:
+                st.session_state.organization_name_en = name_en
+            if legacy:
+                st.session_state.organization_name = legacy
             logo_url = (row.get("logo_url") or "").strip()
     except Exception:
         logo_url = ""
@@ -96,7 +117,8 @@ def load_enterprise_branding(supabase_url: str, headers: Dict[str, str]) -> None
 
 
 def enterprise_display_name() -> str:
-    return (st.session_state.get("organization_name") or "").strip()
+    lang = st.session_state.get("lang", "zh")
+    return _resolve_organization_display_name(lang)
 
 
 def enterprise_logo_url() -> str:

@@ -46,6 +46,39 @@ LOGO_ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 DEFAULT_CONTRACT_YEARS = 1
 
 
+def organization_display_name(
+    *,
+    lang: str = "zh",
+    name_zh: Any = None,
+    name_en: Any = None,
+    name: Any = None,
+    org: Optional[Dict[str, Any]] = None,
+) -> str:
+    if org is not None:
+        name_zh = org.get("name_zh")
+        name_en = org.get("name_en")
+        name = org.get("name")
+    zh = str(name_zh or "").strip()
+    en = str(name_en or "").strip()
+    legacy = str(name or "").strip()
+    if lang == "en":
+        return en or zh or legacy
+    return zh or en or legacy
+
+
+def organization_names_payload(name_zh: str, name_en: str) -> Optional[Dict[str, Any]]:
+    zh = (name_zh or "").strip()
+    en = (name_en or "").strip()
+    if not zh and not en:
+        return None
+    canonical = zh or en
+    return {
+        "name_zh": zh or None,
+        "name_en": en or None,
+        "name": canonical,
+    }
+
+
 def contract_expires_after_years(years: int = DEFAULT_CONTRACT_YEARS) -> str:
     base = datetime.now()
     try:
@@ -194,6 +227,8 @@ def get_full_profile(
         "organization_id": None,
         "org_role": None,
         "organization_name": None,
+        "organization_name_zh": None,
+        "organization_name_en": None,
         "organization_logo_url": None,
         "max_seats": None,
     }
@@ -225,11 +260,13 @@ def get_full_profile(
             supabase_url,
             headers,
             "organizations",
-            select="id,name,max_seats,is_active,contract_expires_at,logo_url,enabled_apps",
+            select="id,name,name_zh,name_en,max_seats,is_active,contract_expires_at,logo_url,enabled_apps",
             filters={"id": org_id},
         )
         if org_rows:
-            profile["organization_name"] = org_rows[0].get("name")
+            profile["organization_name_zh"] = (org_rows[0].get("name_zh") or org_rows[0].get("name") or "").strip() or None
+            profile["organization_name_en"] = (org_rows[0].get("name_en") or "").strip() or None
+            profile["organization_name"] = organization_display_name(org=org_rows[0], lang="zh")
             profile["organization_logo_url"] = org_rows[0].get("logo_url")
             profile["max_seats"] = org_rows[0].get("max_seats")
             profile["org_is_active"] = org_rows[0].get("is_active", True)
@@ -251,7 +288,7 @@ def list_organizations(supabase_url: str, headers: Dict[str, str]) -> List[Dict[
         supabase_url,
         headers,
         "organizations",
-        select="id,name,max_seats,is_active,contract_expires_at,logo_url,enabled_apps,created_at",
+        select="id,name,name_zh,name_en,max_seats,is_active,contract_expires_at,logo_url,enabled_apps,created_at",
         order="name.asc",
     )
 
@@ -259,17 +296,21 @@ def list_organizations(supabase_url: str, headers: Dict[str, str]) -> List[Dict[
 def create_organization(
     supabase_url: str,
     headers: Dict[str, str],
-    name: str,
     max_seats: int,
     *,
+    name_zh: str = "",
+    name_en: str = "",
     contract_years: int = DEFAULT_CONTRACT_YEARS,
 ) -> Optional[Dict[str, Any]]:
+    names = organization_names_payload(name_zh, name_en)
+    if not names:
+        return None
     return supabase_insert(
         supabase_url,
         headers,
         "organizations",
         {
-            "name": name.strip(),
+            **names,
             "max_seats": max_seats,
             "is_active": True,
             "enabled_apps": default_enabled_apps(),
@@ -287,6 +328,32 @@ def update_organization(
 ) -> bool:
     ok, _ = supabase_update(supabase_url, headers, "organizations", org_id, data)
     return ok
+
+
+def set_organization_names(
+    supabase_url: str,
+    headers: Dict[str, str],
+    org_id: str,
+    name_zh: str,
+    name_en: str,
+) -> tuple[bool, str]:
+    names = organization_names_payload(name_zh, name_en)
+    if not names:
+        return False, "name_required"
+    ok, detail = supabase_update(
+        supabase_url,
+        headers,
+        "organizations",
+        org_id,
+        names,
+    )
+    if ok:
+        return True, ""
+    lowered = (detail or "").lower()
+    if "name_zh" in lowered or "name_en" in lowered:
+        if "column" in lowered:
+            return False, "missing_column"
+    return False, detail or "update_failed"
 
 
 def set_organization_enabled_apps(
