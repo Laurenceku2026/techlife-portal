@@ -1,0 +1,32 @@
+{
+  "name": "DFSS",
+  "short_name": "DFSS",
+  "description": "AI-powered DFSS tools: VOC feasibility, DQA, tolerance simulation, and failure analysis.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#1B3A5F",
+  "theme_color": "#1B3A5F",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "https://cdn.jsdelivr.net/gh/Laurenceku2026/techlife-portal@main/assets/brand/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://cdn.jsdelivr.net/gh/Laurenceku2026/techlife-portal@main/assets/brand/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://cdn.jsdelivr.net/gh/Laurenceku2026/techlife-portal@main/assets/brand/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

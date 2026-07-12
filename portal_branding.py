@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Callable
 
@@ -29,48 +30,129 @@ def brand_cdn_base(*, repo: str = DEFAULT_GITHUB_REPO, ref: str = DEFAULT_GITHUB
     return f"https://cdn.jsdelivr.net/gh/{repo}@{ref}/assets/brand"
 
 
+def _pwa_manifest_json(*, icon_base: str, start_url: str, scope: str) -> str:
+    manifest = {
+        "name": APP_DISPLAY_NAME,
+        "short_name": APP_DISPLAY_NAME,
+        "description": "AI-powered DFSS tools: VOC feasibility, DQA, tolerance simulation, and failure analysis.",
+        "start_url": start_url,
+        "scope": scope,
+        "display": "standalone",
+        "orientation": "portrait-primary",
+        "background_color": "#1B3A5F",
+        "theme_color": "#1B3A5F",
+        "lang": "zh-CN",
+        "icons": [
+            {
+                "src": f"{icon_base}/icon-192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any",
+            },
+            {
+                "src": f"{icon_base}/icon-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any",
+            },
+            {
+                "src": f"{icon_base}/icon-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "maskable",
+            },
+        ],
+    }
+    return json.dumps(manifest, ensure_ascii=False)
+
+
 def inject_mobile_home_screen_meta(*, repo: str = DEFAULT_GITHUB_REPO, ref: str = DEFAULT_GITHUB_REF) -> None:
-    """Inject manifest + Apple/Android icons so users can add the app to their home screen."""
-    base = brand_cdn_base(repo=repo, ref=ref)
-    manifest_url = f"{base}/manifest.webmanifest"
-    apple_icon = f"{base}/apple-touch-icon.png"
-    favicon = f"{base}/favicon-32.png"
-    icon_192 = f"{base}/icon-192.png"
-    tile_image = f"{base}/icon-512.png"
+    """Inject manifest + icons into the Streamlit page head (parent document) for PWA install."""
+    cdn_base = brand_cdn_base(repo=repo, ref=ref)
+    manifest_json = _pwa_manifest_json(
+        icon_base=cdn_base,
+        start_url="/",
+        scope="/",
+    )
     app_name = APP_DISPLAY_NAME
 
     components.html(
         f"""
         <script>
         (function () {{
-            const head = document.head;
-            const tags = [
-                {{ tag: 'link', rel: 'manifest', href: '{manifest_url}' }},
-                {{ tag: 'link', rel: 'apple-touch-icon', sizes: '180x180', href: '{apple_icon}' }},
-                {{ tag: 'link', rel: 'icon', type: 'image/png', sizes: '32x32', href: '{favicon}' }},
-                {{ tag: 'link', rel: 'icon', type: 'image/png', sizes: '192x192', href: '{icon_192}' }},
-                {{ tag: 'meta', name: 'theme-color', content: '#1B3A5F' }},
-                {{ tag: 'meta', name: 'apple-mobile-web-app-capable', content: 'yes' }},
-                {{ tag: 'meta', name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' }},
-                {{ tag: 'meta', name: 'apple-mobile-web-app-title', content: '{app_name}' }},
-                {{ tag: 'meta', name: 'application-name', content: '{app_name}' }},
-                {{ tag: 'meta', name: 'mobile-web-app-capable', content: 'yes' }},
-                {{ tag: 'meta', name: 'msapplication-TileColor', content: '#1B3A5F' }},
-                {{ tag: 'meta', name: 'msapplication-TileImage', content: '{tile_image}' }},
-                {{ tag: 'meta', name: 'full-screen', content: 'yes' }},
-                {{ tag: 'meta', name: 'x5-fullscreen', content: 'true' }},
-                {{ tag: 'meta', name: 'browsermode', content: 'application' }},
-            ];
-            tags.forEach(function (spec) {{
-                const key = spec.rel ? 'rel' : 'name';
-                const val = spec.rel || spec.name;
-                if (head.querySelector(key + '="' + val + '"')) return;
-                const el = document.createElement(spec.tag);
-                Object.keys(spec).forEach(function (k) {{
-                    if (k !== 'tag') el.setAttribute(k, spec[k]);
+            let doc;
+            try {{
+                doc = window.parent.document;
+            }} catch (err) {{
+                doc = document;
+            }}
+            const head = doc.head;
+            if (!head) return;
+
+            const loc = window.parent.location;
+            const path = (loc.pathname || "/").replace(/\\/$/, "");
+            const staticBase = loc.origin + (path || "") + "/app/static/brand";
+            const cdnBase = {json.dumps(cdn_base)};
+            const appName = {json.dumps(app_name)};
+
+            head.querySelectorAll(
+                'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"], link[rel="manifest"]'
+            ).forEach(function (node) {{ node.remove(); }});
+
+            const title = doc.querySelector("title");
+            if (title) title.textContent = appName;
+
+            function addTag(spec) {{
+                const el = doc.createElement(spec.tag);
+                Object.keys(spec).forEach(function (key) {{
+                    if (key !== "tag") el.setAttribute(key, spec[key]);
                 }});
                 head.appendChild(el);
-            }});
+                return el;
+            }}
+
+            const iconCandidates = [
+                staticBase + "/icon-192.png",
+                cdnBase + "/icon-192.png",
+            ];
+            const appleCandidates = [
+                staticBase + "/apple-touch-icon.png",
+                cdnBase + "/apple-touch-icon.png",
+            ];
+            const faviconCandidates = [
+                staticBase + "/favicon-32.png",
+                cdnBase + "/favicon-32.png",
+            ];
+
+            addTag({{ tag: "link", rel: "icon", type: "image/png", sizes: "192x192", href: iconCandidates[0] }});
+            addTag({{ tag: "link", rel: "icon", type: "image/png", sizes: "32x32", href: faviconCandidates[0] }});
+            addTag({{ tag: "link", rel: "apple-touch-icon", sizes: "180x180", href: appleCandidates[0] }});
+
+            const manifest = {manifest_json};
+            manifest.start_url = loc.href;
+            manifest.scope = loc.origin + (path || "") + "/";
+            manifest.icons = [
+                {{ src: staticBase + "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" }},
+                {{ src: cdnBase + "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" }},
+                {{ src: staticBase + "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" }},
+                {{ src: cdnBase + "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" }},
+                {{ src: cdnBase + "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }},
+            ];
+
+            const blob = new Blob([JSON.stringify(manifest)], {{ type: "application/manifest+json" }});
+            const manifestUrl = URL.createObjectURL(blob);
+            addTag({{ tag: "link", rel: "manifest", href: manifestUrl }});
+
+            [
+                {{ tag: "meta", name: "theme-color", content: "#1B3A5F" }},
+                {{ tag: "meta", name: "apple-mobile-web-app-capable", content: "yes" }},
+                {{ tag: "meta", name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" }},
+                {{ tag: "meta", name: "apple-mobile-web-app-title", content: appName }},
+                {{ tag: "meta", name: "application-name", content: appName }},
+                {{ tag: "meta", name: "mobile-web-app-capable", content: "yes" }},
+                {{ tag: "meta", name: "msapplication-TileColor", content: "#1B3A5F" }},
+                {{ tag: "meta", name: "msapplication-TileImage", content: staticBase + "/icon-512.png" }},
+            ].forEach(addTag);
         }})();
         </script>
         """,
