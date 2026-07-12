@@ -1,6 +1,6 @@
 {
-  "name": "TechLife DFSS Suite",
-  "short_name": "TechLife",
+  "name": "DFSS",
+  "short_name": "DFSS",
   "description": "AI-powered DFSS tools: VOC feasibility, DQA, tolerance simulation, and failure analysis.",
   "start_url": "/",
   "scope": "/",

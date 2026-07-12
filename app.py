@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional
 
 from portal_auth import build_app_launch_url
-from portal_branding import inject_mobile_home_screen_meta, local_page_icon
+from portal_branding import inject_mobile_home_screen_meta, local_page_icon, render_add_to_home_screen_help
 from portal_enterprise_ui import enterprise_brand_markup
 from kb_translate import bilingualize_kb_content, make_kb_translators
 from enterprise_utils import (
@@ -38,7 +38,7 @@ from enterprise_utils import (
 )
 
 # ==================== 页面配置 ====================
-st.set_page_config(page_title="TechLife DFSS Suite", page_icon=local_page_icon(), layout="wide")
+st.set_page_config(page_title="DFSS", page_icon=local_page_icon(), layout="wide")
 
 # ==================== 管理员配置（从 secrets 读取） ====================
 def _get_secret(key: str, *fallback_keys: str) -> str:
@@ -278,6 +278,13 @@ TEXTS = {
         "logo_too_large": "图片过大，请小于 500KB",
         "logo_invalid_type": "仅支持 PNG、JPG 或 WebP",
         "logo_migration_hint": "请先在 Supabase 执行 supabase_migration_org_logo.sql",
+        "add_home_title": "📱 添加到主屏幕（DFSS）",
+        "add_home_intro": "在手机浏览器打开本页后，可将 **DFSS** 图标添加到主屏幕，像 App 一样快速打开。",
+        "add_home_ios": "**iPhone（Safari）**：分享 → **添加到主屏幕**",
+        "add_home_android_chrome": "**Android（Chrome）**：菜单 ⋮ → **安装应用** 或 **添加到主屏幕**",
+        "add_home_edge": "**Microsoft Edge**：菜单 ··· → **添加到手机** / **安装此站点为应用**",
+        "add_home_xiaomi": "**小米浏览器**：菜单 → **添加到主屏幕** 或 **添加快捷方式到桌面**",
+        "add_home_huawei": "**华为 / 荣耀浏览器**：菜单 → **添加至** / **添加到主屏幕**（或在收藏夹中选择 **添加到桌面**）",
         "settings_tab": "企业设置",
     },
     "en": {
@@ -438,6 +445,13 @@ Let AI become your Chief Quality Engineer.
         "logo_too_large": "Image too large. Max 500KB.",
         "logo_invalid_type": "Only PNG, JPG, or WebP is supported",
         "logo_migration_hint": "Run supabase_migration_org_logo.sql in Supabase first",
+        "add_home_title": "📱 Add to Home Screen (DFSS)",
+        "add_home_intro": "Open this page in your mobile browser to add the **DFSS** icon to your home screen.",
+        "add_home_ios": "**iPhone (Safari)**: Share → **Add to Home Screen**",
+        "add_home_android_chrome": "**Android (Chrome)**: Menu ⋮ → **Install app** or **Add to Home screen**",
+        "add_home_edge": "**Microsoft Edge**: Menu ··· → **Add to phone** / **Install this site as an app**",
+        "add_home_xiaomi": "**Xiaomi Browser**: Menu → **Add to Home screen** or **Add shortcut to desktop**",
+        "add_home_huawei": "**Huawei / Honor Browser**: Menu → **Add to** / **Add to Home screen** (or **Add to desktop** from bookmarks)",
         "settings_tab": "Settings",
     }
 }
@@ -937,6 +951,8 @@ def render_sidebar():
             st.divider()
             st.subheader(t()["contact_header"])
             st.markdown(t()["contact_email"])
+
+        render_add_to_home_screen_help(translate=t)
         
         if st.session_state.authenticated:
             st.divider()

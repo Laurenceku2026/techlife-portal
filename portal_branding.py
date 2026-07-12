@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
+import streamlit as st
 import streamlit.components.v1 as components
+
+APP_DISPLAY_NAME = "DFSS"
 
 BRAND_DIR = Path(__file__).resolve().parent / "assets" / "brand"
 LOCAL_ICON_48 = BRAND_DIR / "icon-48.png"
@@ -32,6 +36,8 @@ def inject_mobile_home_screen_meta(*, repo: str = DEFAULT_GITHUB_REPO, ref: str 
     apple_icon = f"{base}/apple-touch-icon.png"
     favicon = f"{base}/favicon-32.png"
     icon_192 = f"{base}/icon-192.png"
+    tile_image = f"{base}/icon-512.png"
+    app_name = APP_DISPLAY_NAME
 
     components.html(
         f"""
@@ -46,9 +52,14 @@ def inject_mobile_home_screen_meta(*, repo: str = DEFAULT_GITHUB_REPO, ref: str 
                 {{ tag: 'meta', name: 'theme-color', content: '#1B3A5F' }},
                 {{ tag: 'meta', name: 'apple-mobile-web-app-capable', content: 'yes' }},
                 {{ tag: 'meta', name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' }},
-                {{ tag: 'meta', name: 'apple-mobile-web-app-title', content: 'TechLife' }},
-                {{ tag: 'meta', name: 'application-name', content: 'TechLife DFSS' }},
+                {{ tag: 'meta', name: 'apple-mobile-web-app-title', content: '{app_name}' }},
+                {{ tag: 'meta', name: 'application-name', content: '{app_name}' }},
                 {{ tag: 'meta', name: 'mobile-web-app-capable', content: 'yes' }},
+                {{ tag: 'meta', name: 'msapplication-TileColor', content: '#1B3A5F' }},
+                {{ tag: 'meta', name: 'msapplication-TileImage', content: '{tile_image}' }},
+                {{ tag: 'meta', name: 'full-screen', content: 'yes' }},
+                {{ tag: 'meta', name: 'x5-fullscreen', content: 'true' }},
+                {{ tag: 'meta', name: 'browsermode', content: 'application' }},
             ];
             tags.forEach(function (spec) {{
                 const key = spec.rel ? 'rel' : 'name';
@@ -66,3 +77,15 @@ def inject_mobile_home_screen_meta(*, repo: str = DEFAULT_GITHUB_REPO, ref: str 
         height=0,
         width=0,
     )
+
+
+def render_add_to_home_screen_help(*, translate: Callable[[], dict]):
+    """Sidebar help for adding DFSS to the phone home screen across major mobile browsers."""
+    text = translate()
+    with st.expander(text["add_home_title"], expanded=False):
+        st.markdown(text["add_home_intro"])
+        st.markdown(text["add_home_ios"])
+        st.markdown(text["add_home_android_chrome"])
+        st.markdown(text["add_home_edge"])
+        st.markdown(text["add_home_xiaomi"])
+        st.markdown(text["add_home_huawei"])
