@@ -529,6 +529,7 @@ def reset_to_guest_session():
     st.session_state.show_register = False
     st.session_state.reset_password = False
     st.session_state.pending_delete_org_id = None
+    _clear_admin_tab_query_param()
     if password_flash:
         st.session_state._password_changed_flash = True
 
@@ -570,6 +571,9 @@ def apply_pending_guest_reset():
 
 PLATFORM_ADMIN_WIDGET_KEYS = (
     "platform_admin_section",
+    "platform_tab_btn_users",
+    "platform_tab_btn_orgs",
+    "platform_tab_btn_kb",
     "platform_kb_org_id",
     "platform_selected_org_id",
     "platform_kb_download_template_btn",
@@ -622,6 +626,7 @@ def apply_pending_admin_login():
     st.session_state.user_email = ADMIN_EMAIL or ""
     st.session_state.user_id = "admin"
     st.session_state.platform_admin_section = "users"
+    st.query_params["admin_tab"] = "users"
 
 
 ORG_ADMIN_WIDGET_KEYS = (
@@ -697,19 +702,8 @@ def _clear_org_admin_section_keys(section: str):
 
 
 def request_org_admin_section_switch(target_section: str):
-    current_section = st.session_state.get("org_admin_section", "members")
-    if current_section == target_section:
+    if st.session_state.get("org_admin_section", "members") == target_section:
         return
-    st.session_state._org_admin_section_target = target_section
-    st.session_state._org_admin_section_switch_pending = True
-
-
-def apply_pending_org_admin_section_switch():
-    if not st.session_state.pop("_org_admin_section_switch_pending", False):
-        return
-    target_section = st.session_state.pop("_org_admin_section_target", "members")
-    reset_to_authenticated_main_session()
-    st.session_state.org_admin_mode = True
     st.session_state.org_admin_section = target_section
     st.session_state._org_admin_active_section = target_section
 
@@ -1623,11 +1617,30 @@ def render_org_admin_panel():
             args=("settings",),
         )
 
-    if selected_section == "members":
+    # Keep every tab's widgets mounted (especially file uploaders) to avoid native
+    # segfaults when Streamlit unmounts them on conditional tab switches.
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stExpander"] details > summary {
+            display: none !important;
+        }
+        div[data-testid="stExpander"] details {
+            border: none !important;
+        }
+        div[data-testid="stExpander"] .streamlit-expanderContent {
+            border: none !important;
+            padding-top: 0 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.expander(section_labels["members"], expanded=(selected_section == "members")):
         render_org_members_tab(profile)
-    elif selected_section == "kb":
+    with st.expander(section_labels["kb"], expanded=(selected_section == "kb")):
         render_org_kb_tab(profile)
-    else:
+    with st.expander(section_labels["settings"], expanded=(selected_section == "settings")):
         render_org_logo_section(
             profile.get("organization_id"),
             profile.get("organization_logo_url"),
@@ -2000,6 +2013,110 @@ def render_admin_user_section(users, auth_users):
             st.rerun()
 
 
+PLATFORM_ADMIN_SECTIONS = ("users", "orgs", "kb")
+
+
+def _query_param_value(name: str) -> Optional[str]:
+    raw = st.query_params.get(name)
+    if isinstance(raw, list):
+        return raw[0] if raw else None
+    return raw
+
+
+def _clear_admin_tab_query_param():
+    if "admin_tab" in st.query_params:
+        del st.query_params["admin_tab"]
+
+
+def sync_platform_admin_tab_from_query_params():
+    if not st.session_state.get("admin_mode"):
+        return
+    admin_tab = _query_param_value("admin_tab")
+    if admin_tab in PLATFORM_ADMIN_SECTIONS:
+        st.session_state.platform_admin_section = admin_tab
+
+
+def request_platform_admin_section_switch(target_section: str):
+    current_section = st.session_state.get("platform_admin_section", "users")
+    if current_section == target_section:
+        return
+    st.query_params["admin_tab"] = target_section
+    st.session_state.platform_admin_section = target_section
+
+
+def _platform_admin_tab_button_css(*, active: bool) -> str:
+    if active:
+        return (
+            "display:block;width:100%;box-sizing:border-box;text-align:center;"
+            "padding:0.45rem 0.75rem;border-radius:0.5rem;background:#ff4b4b;"
+            "color:#ffffff;text-decoration:none;font-weight:600;opacity:0.65;"
+            "cursor:default;pointer-events:none;"
+        )
+    return (
+        "display:block;width:100%;box-sizing:border-box;text-align:center;"
+        "padding:0.45rem 0.75rem;border-radius:0.5rem;background:#f0f2f6;"
+        "color:#31333f;text-decoration:none;font-weight:600;border:1px solid #d6d6d8;"
+    )
+
+
+def _render_platform_admin_tab_nav(section_labels: Dict[str, str], selected_section: str):
+    # Leaving the KB tab via st.button can segfault on Streamlit Cloud + Python 3.14
+    # when file_uploader widgets are torn down. HTML links navigate without that rerun.
+    if selected_section == "kb":
+        tab_col1, tab_col2, tab_col3 = st.columns(3)
+        with tab_col1:
+            st.markdown(
+                f'<a href="?admin_tab=users" style="{_platform_admin_tab_button_css(active=False)}">'
+                f'{section_labels["users"]}</a>',
+                unsafe_allow_html=True,
+            )
+        with tab_col2:
+            st.markdown(
+                f'<a href="?admin_tab=orgs" style="{_platform_admin_tab_button_css(active=False)}">'
+                f'{section_labels["orgs"]}</a>',
+                unsafe_allow_html=True,
+            )
+        with tab_col3:
+            st.markdown(
+                f'<span style="{_platform_admin_tab_button_css(active=True)}">'
+                f'{section_labels["kb"]}</span>',
+                unsafe_allow_html=True,
+            )
+        return
+
+    tab_col1, tab_col2, tab_col3 = st.columns(3)
+    with tab_col1:
+        st.button(
+            section_labels["users"],
+            key="platform_tab_btn_users",
+            type="primary" if selected_section == "users" else "secondary",
+            use_container_width=True,
+            disabled=selected_section == "users",
+            on_click=request_platform_admin_section_switch,
+            args=("users",),
+        )
+    with tab_col2:
+        st.button(
+            section_labels["orgs"],
+            key="platform_tab_btn_orgs",
+            type="primary" if selected_section == "orgs" else "secondary",
+            use_container_width=True,
+            disabled=selected_section == "orgs",
+            on_click=request_platform_admin_section_switch,
+            args=("orgs",),
+        )
+    with tab_col3:
+        st.button(
+            section_labels["kb"],
+            key="platform_tab_btn_kb",
+            type="primary" if selected_section == "kb" else "secondary",
+            use_container_width=True,
+            disabled=selected_section == "kb",
+            on_click=request_platform_admin_section_switch,
+            args=("kb",),
+        )
+
+
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     try:
@@ -2032,14 +2149,13 @@ def render_admin_panel():
             "orgs": t()["org_mgmt"],
             "kb": t()["platform_kb_tab"],
         }
-        selected_section = st.radio(
-            "platform_admin_section",
-            list(section_labels.keys()),
-            format_func=lambda key: section_labels[key],
-            horizontal=True,
-            key="platform_admin_section",
-            label_visibility="collapsed",
-        )
+        selected_section = st.session_state.get("platform_admin_section", "users")
+        if selected_section not in section_labels:
+            selected_section = "users"
+            st.session_state.platform_admin_section = "users"
+
+        _render_platform_admin_tab_nav(section_labels, selected_section)
+
         if selected_section == "users":
             try:
                 render_admin_user_section(users, auth_users)
@@ -2075,8 +2191,8 @@ def main():
     try:
         apply_pending_guest_reset()
         apply_pending_admin_login()
+        sync_platform_admin_tab_from_query_params()
         apply_pending_org_admin_entry()
-        apply_pending_org_admin_section_switch()
         apply_pending_org_admin_exit()
         if not st.session_state.get("authenticated"):
             st.session_state.admin_mode = False
