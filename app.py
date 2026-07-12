@@ -314,6 +314,7 @@ TEXTS = {
         "add_home_vivo": "**vivo 浏览器**：菜单 → **添加到桌面** 或 **添加快捷方式**（部分机型在「收藏」→ **添加到主屏幕**）",
         "add_home_samsung": "**三星浏览器（Samsung Internet）**：菜单 ☰ → **添加页面至** → **主屏幕**",
         "settings_tab": "企业设置",
+        "license_expire": "使用到期日",
     },
     "en": {
         "sidebar_title": "TechLife Suite",
@@ -496,6 +497,7 @@ Let AI be your Chief Product Development Engineer.
         "add_home_vivo": "**vivo Browser**: Menu → **Add to desktop** or **Add shortcut** (on some models: **Bookmarks** → **Add to Home screen**)",
         "add_home_samsung": "**Samsung Internet**: Menu ☰ → **Add page to** → **Home screen**",
         "settings_tab": "Settings",
+        "license_expire": "License expire",
     }
 }
 
@@ -1720,6 +1722,22 @@ def render_org_kb_tab(profile, *, include_excel_upload: bool = True, uploaded_ex
     )
 
 
+def render_org_settings_tab(profile, *, include_uploader: bool = True, uploaded=None):
+    expires_text = format_contract_expires(
+        profile.get("contract_expires_at"),
+        fallback=t()["contract_expires_unset"],
+    )
+    st.metric(t()["license_expire"], expires_text)
+    st.markdown("---")
+    render_org_logo_section(
+        profile.get("organization_id"),
+        profile.get("organization_logo_url"),
+        "org_admin",
+        include_uploader=include_uploader,
+        uploaded=uploaded,
+    )
+
+
 def render_org_admin_panel():
     profile = safe_get_profile(st.session_state.user_id)
     if not is_org_admin(profile):
@@ -1752,10 +1770,8 @@ def render_org_admin_panel():
             uploaded_excel=org_uploads.get("kb_excel"),
         )
     with st.expander(section_labels["settings"], expanded=(selected_section == "settings")):
-        render_org_logo_section(
-            profile.get("organization_id"),
-            profile.get("organization_logo_url"),
-            "org_admin",
+        render_org_settings_tab(
+            profile,
             include_uploader=False,
             uploaded=org_uploads.get("logo"),
         )
