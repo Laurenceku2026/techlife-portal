@@ -134,13 +134,15 @@ TEXTS = {
         "about_text": """
 **TechLife Suite** 是专为研发工程师打造的 **AI 赋能 DFSS（六西格玛设计）** 平台。
 
-我们致力于通过人工智能技术，简化复杂的工程设计流程，帮助团队实现：
+我们致力于用人工智能简化复杂的产品开发流程，覆盖从市场输入、设计预防到失效根治的完整闭环：
 
-- **智能需求分析**：快速拆解客户之声 (VOC)。
-- **自动化风险评估**：AI 辅助生成 DFMEA。
-- **参数优化设计**：利用算法寻找最优容差。
+- **产品可行性分析**：挖掘市场趋势与用户之声 (VOC)。
+- **AI-DQA 设计质量保证**：事前识别设计风险，AI 辅助 DFMEA。
+- **Para-Vary 公差仿真**：蒙特卡罗累积公差分析，获得稳健设计。
+- **AI-FA 智能故障分析**：AI 驱动 5-Why 根因定位与 8D 报告。
+- **EML Calculator**：健康照明 EML/m-EDI 光谱与节律效应评估。
 
-让 AI 成为您的首席质量工程师。
+让 AI 成为您的产品开发首席工程师。
 """,
         "contact_header": "📧 联系我们",
         "contact_email": "邮箱: Techlife2027@gmail.com",
@@ -311,13 +313,15 @@ TEXTS = {
         "about_text": """
 **TechLife Suite** is an **AI-empowered DFSS (Design for Six Sigma)** platform for R&D engineers.
 
-We are committed to simplifying complex engineering design processes through AI technology, helping teams achieve:
+We use artificial intelligence to simplify complex product development, covering the full loop from market input and design prevention to failure resolution:
 
-- **Intelligent Requirement Analysis**: Decompose Voice of Customer (VOC).
-- **Automated Risk Assessment**: AI-assisted DFMEA generation.
-- **Parameter Optimization**: Algorithm-driven tolerance search.
+- **Product Feasibility**: Market trends and Voice of Customer (VOC).
+- **AI-DQA**: Upfront design risk identification with AI-assisted DFMEA.
+- **Para-Vary**: Monte Carlo tolerance stack-up for robust design.
+- **AI-FA**: AI-driven 5-Why root cause analysis and 8D reporting.
+- **EML Calculator**: Healthy lighting EML/m-EDI spectral and circadian evaluation.
 
-Let AI become your Chief Quality Engineer.
+Let AI be your Chief Product Development Engineer.
 """,
         "contact_header": "📧 Contact Us",
         "contact_email": "Email: Techlife2027@gmail.com",
