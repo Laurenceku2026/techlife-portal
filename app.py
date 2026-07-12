@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional
 
 from portal_auth import build_app_launch_url
+from portal_branding import inject_mobile_home_screen_meta, local_page_icon
 from portal_enterprise_ui import enterprise_brand_markup
 from kb_translate import bilingualize_kb_content, make_kb_translators
 from enterprise_utils import (
@@ -37,7 +38,7 @@ from enterprise_utils import (
 )
 
 # ==================== 页面配置 ====================
-st.set_page_config(page_title="TechLife Suite", page_icon="🔧", layout="wide")
+st.set_page_config(page_title="TechLife DFSS Suite", page_icon=local_page_icon(), layout="wide")
 
 # ==================== 管理员配置（从 secrets 读取） ====================
 def _get_secret(key: str, *fallback_keys: str) -> str:
@@ -2153,6 +2154,7 @@ def render_admin_panel():
 
 def main():
     try:
+        inject_mobile_home_screen_meta()
         apply_pending_guest_reset()
         apply_pending_admin_login()
         _scrub_admin_url_query_params()

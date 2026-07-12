@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TechLife DFSS Suite">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1B3A5F"/>
+      <stop offset="100%" stop-color="#0F2744"/>
+    </linearGradient>
+    <linearGradient id="curve" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="50%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E2E8F0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="198" fill="none" stroke="#14B8A6" stroke-width="4" stroke-opacity="0.35"/>
+  <path d="M256 84 A198 198 0 0 1 454 256" fill="none" stroke="#14B8A6" stroke-width="6" stroke-linecap="round"/>
+  <polygon points="448,248 472,256 448,264" fill="#14B8A6"/>
+  <line x1="136" y1="120" x2="136" y2="392" stroke="#14B8A6" stroke-width="5" stroke-opacity="0.85"/>
+  <line x1="376" y1="120" x2="376" y2="392" stroke="#14B8A6" stroke-width="5" stroke-opacity="0.85"/>
+  <path d="M96 340 C 140 340, 180 170, 256 170 C 332 170, 372 340, 416 340" fill="none" stroke="url(#curve)" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="256" cy="170" r="16" fill="#14B8A6"/>
+  <text x="256" y="430" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="72" font-weight="700" fill="#FFFFFF" opacity="0.95">Ã</text>
+  <circle cx="256" cy="58" r="10" fill="#14B8A6"/>
+  <circle cx="454" cy="256" r="10" fill="#14B8A6"/>
+  <circle cx="256" cy="454" r="10" fill="#14B8A6"/>
+  <circle cx="58" cy="256" r="10" fill="#14B8A6"/>
+</svg>
