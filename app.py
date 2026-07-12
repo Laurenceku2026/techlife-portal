@@ -875,6 +875,8 @@ def apply_pending_org_admin_entry():
         st.session_state.org_admin_mode = True
         st.session_state.org_admin_section = "members"
         st.session_state._org_admin_active_section = "members"
+        st.session_state.pop("_org_admin_names_org_id", None)
+        st.session_state.pop("_platform_names_org_id", None)
 
 
 def apply_pending_org_admin_exit():
@@ -910,13 +912,28 @@ def profile_organization_name(profile, lang=None):
 
 
 def sync_org_name_widget_state(org_id, org, prefix: str):
-    if st.session_state.get(f"_{prefix}_names_org_id") != org_id:
+    name_zh = (org.get("name_zh") or org.get("name") or "").strip()
+    name_en = (org.get("name_en") or "").strip()
+    display_mode = (org.get("name_display_mode") or "auto").strip().lower()
+    if display_mode not in ("zh", "en"):
+        display_mode = "auto"
+
+    zh_key = f"{prefix}_org_name_zh"
+    en_key = f"{prefix}_org_name_en"
+    lock_key = f"{prefix}_org_name_lock"
+    fixed_key = f"{prefix}_org_name_fixed_lang"
+    tracked_id = st.session_state.get(f"_{prefix}_names_org_id")
+    needs_sync = (
+        tracked_id != org_id
+        or zh_key not in st.session_state
+        or en_key not in st.session_state
+    )
+    if needs_sync:
         st.session_state[f"_{prefix}_names_org_id"] = org_id
-        st.session_state[f"{prefix}_org_name_zh"] = org.get("name_zh") or ""
-        st.session_state[f"{prefix}_org_name_en"] = org.get("name_en") or ""
-        display_mode = (org.get("name_display_mode") or "auto").strip().lower()
-        st.session_state[f"{prefix}_org_name_lock"] = display_mode in ("zh", "en")
-        st.session_state[f"{prefix}_org_name_fixed_lang"] = display_mode if display_mode in ("zh", "en") else "zh"
+        st.session_state[zh_key] = name_zh
+        st.session_state[en_key] = name_en
+        st.session_state[lock_key] = display_mode in ("zh", "en")
+        st.session_state[fixed_key] = display_mode if display_mode in ("zh", "en") else "zh"
 
 
 def render_organization_names_editor(org_id, org, key_prefix: str):
@@ -1833,7 +1850,7 @@ def render_org_settings_tab(profile, *, include_uploader: bool = True, uploaded=
     st.subheader(t()["org_name"])
     org_id = profile.get("organization_id")
     org_record = {
-        "name_zh": profile.get("organization_name_zh"),
+        "name_zh": profile.get("organization_name_zh") or profile.get("organization_name_legacy"),
         "name_en": profile.get("organization_name_en"),
         "name": profile.get("organization_name_legacy"),
         "name_display_mode": profile.get("organization_name_display_mode") or "auto",

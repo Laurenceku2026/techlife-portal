@@ -150,7 +150,7 @@ def enterprise_brand_markup(org_name: str, logo_url: str | None, *, variant: str
     if variant == "sidebar":
         wrapper_style = (
             "display:flex; align-items:center; "
-            "font-size:2.25rem; font-weight:700; line-height:1.2; margin:0 0 0.5rem 0;"
+            "font-size:calc(2.25rem * 0.85); font-weight:700; line-height:1.2; margin:0 0 0.5rem 0;"
         )
     elif variant == "main_compact":
         wrapper_style = (
