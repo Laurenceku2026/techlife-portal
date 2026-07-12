@@ -838,15 +838,23 @@ def _handle_logo_upload_result(ok: bool, reason: str):
         st.error(reason or t()["logo_invalid_type"])
 
 
-def render_org_logo_section(org_id: str, logo_url, key_prefix: str):
+def render_org_logo_section(
+    org_id: str,
+    logo_url,
+    key_prefix: str,
+    *,
+    include_uploader: bool = True,
+    uploaded=None,
+):
     st.subheader(t()["org_logo"])
     if logo_url:
         st.image(logo_url, width=140)
-    uploaded = st.file_uploader(
-        t()["upload_logo"],
-        type=["png", "jpg", "jpeg", "webp"],
-        key=f"{key_prefix}_logo_uploader",
-    )
+    if include_uploader:
+        uploaded = st.file_uploader(
+            t()["upload_logo"],
+            type=["png", "jpg", "jpeg", "webp"],
+            key=f"{key_prefix}_logo_uploader",
+        )
     col_save, col_remove = st.columns(2)
     with col_save:
         if st.button(t()["save_logo"], key=f"{key_prefix}_save_logo", use_container_width=True, type="primary"):
@@ -1467,6 +1475,8 @@ def render_tenant_kb_panel(
     org_name: str,
     *,
     widget_keys: Optional[Dict[str, str]] = None,
+    include_excel_upload: bool = True,
+    uploaded_excel=None,
 ):
     """Shared tenant knowledge base UI for org admins and platform admins."""
     keys = {
@@ -1523,11 +1533,12 @@ def render_tenant_kb_panel(
             key=keys["export_btn"],
         )
 
-    uploaded_excel = st.file_uploader(
-        t()["kb_upload_excel"],
-        type=["xlsx"],
-        key=keys["uploader"],
-    )
+    if include_excel_upload:
+        uploaded_excel = st.file_uploader(
+            t()["kb_upload_excel"],
+            type=["xlsx"],
+            key=keys["uploader"],
+        )
     replace_existing = st.checkbox(t()["kb_replace_on_import"], key=keys["replace"])
     if st.button(t()["kb_import_btn"], key=keys["import_btn"], type="primary", use_container_width=True):
         if not uploaded_excel:
@@ -1608,13 +1619,49 @@ def render_tenant_kb_panel(
                 st.rerun()
 
 
-def render_org_kb_tab(profile):
+def _render_persisted_file_uploaders(active_section: str, *, scope: str) -> Dict[str, object]:
+    """Keep file uploaders mounted across admin tab switches to avoid native segfaults."""
+    uploads: Dict[str, object] = {}
+    kb_disabled = active_section != "kb"
+    settings_disabled = active_section != "settings"
+    if scope == "org":
+        uploads["kb_excel"] = st.file_uploader(
+            t()["kb_upload_excel"],
+            type=["xlsx"],
+            key="kb_excel_uploader",
+            disabled=kb_disabled,
+            label_visibility="collapsed" if kb_disabled else "visible",
+        )
+        uploads["logo"] = st.file_uploader(
+            t()["upload_logo"],
+            type=["png", "jpg", "jpeg", "webp"],
+            key="org_admin_logo_uploader",
+            disabled=settings_disabled,
+            label_visibility="collapsed" if settings_disabled else "visible",
+        )
+    else:
+        uploads["kb_excel"] = st.file_uploader(
+            t()["kb_upload_excel"],
+            type=["xlsx"],
+            key="platform_kb_excel_uploader",
+            disabled=kb_disabled,
+            label_visibility="collapsed" if kb_disabled else "visible",
+        )
+    return uploads
+
+
+def render_org_kb_tab(profile, *, include_excel_upload: bool = True, uploaded_excel=None):
     org_id = profile.get("organization_id")
     org_name = profile.get("organization_name") or t()["enterprise_plan"]
     if not org_id:
         st.warning("未找到企业信息" if st.session_state.lang == "zh" else "Organization not found")
         return
-    render_tenant_kb_panel(org_id, org_name)
+    render_tenant_kb_panel(
+        org_id,
+        org_name,
+        include_excel_upload=include_excel_upload,
+        uploaded_excel=uploaded_excel,
+    )
 
 
 def render_org_admin_panel():
@@ -1638,16 +1685,23 @@ def render_org_admin_panel():
         st.session_state.org_admin_section = "members"
 
     _render_admin_tab_buttons(section_labels, selected_section, "org", request_org_admin_section_switch)
+    org_uploads = _render_persisted_file_uploaders(selected_section, scope="org")
     _render_hidden_expander_tab_css()
     with st.expander(section_labels["members"], expanded=(selected_section == "members")):
         render_org_members_tab(profile)
     with st.expander(section_labels["kb"], expanded=(selected_section == "kb")):
-        render_org_kb_tab(profile)
+        render_org_kb_tab(
+            profile,
+            include_excel_upload=False,
+            uploaded_excel=org_uploads.get("kb_excel"),
+        )
     with st.expander(section_labels["settings"], expanded=(selected_section == "settings")):
         render_org_logo_section(
             profile.get("organization_id"),
             profile.get("organization_logo_url"),
             "org_admin",
+            include_uploader=False,
+            uploaded=org_uploads.get("logo"),
         )
 
     st.markdown("---")
@@ -1659,7 +1713,7 @@ def render_org_admin_panel():
     )
 
 
-def render_platform_org_kb_section():
+def render_platform_org_kb_section(*, include_excel_upload: bool = True, uploaded_excel=None):
     orgs = list_organizations(SUPABASE_URL, SERVICE_HEADERS)
     if not orgs:
         st.info(t()["platform_no_orgs_kb"])
@@ -1690,6 +1744,8 @@ def render_platform_org_kb_section():
     render_tenant_kb_panel(
         selected_org_id,
         org_name,
+        include_excel_upload=include_excel_upload,
+        uploaded_excel=uploaded_excel,
         widget_keys={
             "template_btn": "platform_kb_download_template_btn",
             "export_btn": "platform_kb_download_export_btn",
@@ -1932,7 +1988,7 @@ def render_admin_user_section(users, auth_users):
                 "最后登录": _safe_date_prefix(ai.get("last_sign_in_at")),
                 "到期时间": _safe_date_prefix(user.get("subscription_expires_at")),
             })
-        st.table(user_data)
+        st.dataframe(user_data, use_container_width=True, height=400)
     else:
         st.info("暂无用户数据")
 
@@ -2059,6 +2115,7 @@ def render_admin_panel():
             "platform",
             request_platform_admin_section_switch,
         )
+        platform_uploads = _render_persisted_file_uploaders(selected_section, scope="platform")
         _render_hidden_expander_tab_css()
         with st.expander(section_labels["users"], expanded=(selected_section == "users")):
             try:
@@ -2074,7 +2131,10 @@ def render_admin_panel():
                 st.exception(exc)
         with st.expander(section_labels["kb"], expanded=(selected_section == "kb")):
             try:
-                render_platform_org_kb_section()
+                render_platform_org_kb_section(
+                    include_excel_upload=False,
+                    uploaded_excel=platform_uploads.get("kb_excel"),
+                )
             except Exception as exc:
                 st.error("企业知识库加载失败" if st.session_state.lang == "zh" else "Failed to load organization knowledge bases")
                 st.exception(exc)
