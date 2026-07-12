@@ -1443,9 +1443,9 @@ def render_app_navigation(profile, tier, remaining):
     else:
         enabled_keys = list(PORTAL_APP_KEYS)
 
+    lang = st.session_state.lang
     org_name = profile_organization_name(profile, lang=lang)
     org_role = profile.get("org_role")
-    lang = st.session_state.lang
 
     for app_key in PORTAL_APP_KEYS:
         if app_key not in enabled_keys:
