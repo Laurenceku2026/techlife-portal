@@ -140,7 +140,6 @@ TEXTS = {
 - **AI-DQA 设计质量保证**：事前识别设计风险，AI 辅助 DFMEA。
 - **Para-Vary 公差仿真**：蒙特卡罗累积公差分析，获得稳健设计。
 - **AI-FA 智能故障分析**：AI 驱动 5-Why 根因定位与 8D 报告。
-- **EML Calculator**：健康照明 EML/m-EDI 光谱与节律效应评估。
 
 让 AI 成为您的产品开发首席工程师。
 """,
@@ -319,7 +318,6 @@ We use artificial intelligence to simplify complex product development, covering
 - **AI-DQA**: Upfront design risk identification with AI-assisted DFMEA.
 - **Para-Vary**: Monte Carlo tolerance stack-up for robust design.
 - **AI-FA**: AI-driven 5-Why root cause analysis and 8D reporting.
-- **EML Calculator**: Healthy lighting EML/m-EDI spectral and circadian evaluation.
 
 Let AI be your Chief Product Development Engineer.
 """,
