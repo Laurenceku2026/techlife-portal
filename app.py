@@ -842,6 +842,15 @@ def _safe_date_prefix(value, fallback: str = "-") -> str:
     return str(value)[:10]
 
 
+def _welcome_display_name(email: Optional[str]) -> str:
+    if not email:
+        return ""
+    local = email.split("@", 1)[0].strip()
+    if not local:
+        return email
+    return local.capitalize()
+
+
 def safe_get_profile(user_id: str):
     try:
         return get_user_profile(user_id)
@@ -1417,14 +1426,14 @@ def render_main_app():
 
         if enterprise:
             st.markdown(
-                f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {st.session_state.user_email}</h3>",
+                f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {_welcome_display_name(st.session_state.user_email)}</h3>",
                 unsafe_allow_html=True,
             )
         else:
             col_welcome, col_refresh = st.columns([11, 1])
             with col_welcome:
                 st.markdown(
-                    f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {st.session_state.user_email}</h3>",
+                    f"<h3 style='text-align: left; margin:0;'>{t()['welcome']}, {_welcome_display_name(st.session_state.user_email)}</h3>",
                     unsafe_allow_html=True,
                 )
             with col_refresh:
