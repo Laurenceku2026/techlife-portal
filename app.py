@@ -231,6 +231,9 @@ TEXTS = {
         "org_name_en": "企业名称（英文）",
         "org_name_required": "请至少填写中文或英文企业名称",
         "org_names_migration_hint": "请先在 Supabase 执行 supabase_migration_org_names.sql",
+        "org_name_display_lock": "固定企业名称语言",
+        "org_name_display_lock_hint": "勾选后主页始终显示所选语言的企业名称；不勾选则随页面中英文切换",
+        "org_name_display_fixed": "固定显示",
         "max_seats": "席位上限",
         "contract_years": "使用年限（年）",
         "contract_expires": "到期日期",
@@ -418,6 +421,9 @@ Let AI be your Chief Product Development Engineer.
         "org_name_en": "Organization name (English)",
         "org_name_required": "Enter at least a Chinese or English organization name",
         "org_names_migration_hint": "Run supabase_migration_org_names.sql in Supabase first",
+        "org_name_display_lock": "Lock organization name language",
+        "org_name_display_lock_hint": "When checked, the portal always shows the selected language; when unchecked, it follows the page language",
+        "org_name_display_fixed": "Always show",
         "max_seats": "Max Seats",
         "contract_years": "Contract term (years)",
         "contract_expires": "Expiry date",
@@ -668,6 +674,8 @@ PLATFORM_ADMIN_WIDGET_KEYS = (
     "cancel_delete_org_btn",
     "platform_org_name_zh",
     "platform_org_name_en",
+    "platform_org_name_lock",
+    "platform_org_name_fixed_lang",
     "platform_org_max_seats",
     "platform_org_contract_expires",
     "platform_update_org_btn",
@@ -723,6 +731,8 @@ ORG_ADMIN_WIDGET_KEYS = (
     "org_admin_save_logo",
     "org_admin_remove_logo",
     "org_admin_save_names_btn",
+    "org_admin_org_name_lock",
+    "org_admin_org_name_fixed_lang",
     "org_admin_exit",
 )
 
@@ -748,6 +758,8 @@ ORG_ADMIN_SECTION_WIDGET_KEYS = {
     "settings": (
         "org_admin_org_name_zh",
         "org_admin_org_name_en",
+        "org_admin_org_name_lock",
+        "org_admin_org_name_fixed_lang",
         "org_admin_save_names_btn",
         "org_admin_logo_uploader",
         "org_admin_save_logo",
@@ -892,15 +904,19 @@ def profile_organization_name(profile, lang=None):
         lang=lang or st.session_state.get("lang", "zh"),
         name_zh=profile.get("organization_name_zh"),
         name_en=profile.get("organization_name_en"),
-        name=profile.get("organization_name"),
+        name=profile.get("organization_name_legacy"),
+        name_display_mode=profile.get("organization_name_display_mode") or "auto",
     )
 
 
 def sync_org_name_widget_state(org_id, org, prefix: str):
     if st.session_state.get(f"_{prefix}_names_org_id") != org_id:
         st.session_state[f"_{prefix}_names_org_id"] = org_id
-        st.session_state[f"{prefix}_org_name_zh"] = (org.get("name_zh") or org.get("name") or "")
+        st.session_state[f"{prefix}_org_name_zh"] = org.get("name_zh") or ""
         st.session_state[f"{prefix}_org_name_en"] = org.get("name_en") or ""
+        display_mode = (org.get("name_display_mode") or "auto").strip().lower()
+        st.session_state[f"{prefix}_org_name_lock"] = display_mode in ("zh", "en")
+        st.session_state[f"{prefix}_org_name_fixed_lang"] = display_mode if display_mode in ("zh", "en") else "zh"
 
 
 def render_organization_names_editor(org_id, org, key_prefix: str):
@@ -910,6 +926,21 @@ def render_organization_names_editor(org_id, org, key_prefix: str):
         name_zh = st.text_input(t()["org_name_zh"], key=f"{key_prefix}_org_name_zh")
     with col_en:
         name_en = st.text_input(t()["org_name_en"], key=f"{key_prefix}_org_name_en")
+    lock_display = st.checkbox(
+        t()["org_name_display_lock"],
+        help=t()["org_name_display_lock_hint"],
+        key=f"{key_prefix}_org_name_lock",
+    )
+    fixed_lang = "zh"
+    if lock_display:
+        fixed_lang = st.radio(
+            t()["org_name_display_fixed"],
+            options=["zh", "en"],
+            format_func=lambda value: t()["chinese"] if value == "zh" else t()["english"],
+            horizontal=True,
+            key=f"{key_prefix}_org_name_fixed_lang",
+        )
+    display_mode = fixed_lang if lock_display else "auto"
     if st.button(t()["update_btn"], key=f"{key_prefix}_save_names_btn", use_container_width=True):
         ok, reason = set_organization_names(
             SUPABASE_URL,
@@ -917,6 +948,7 @@ def render_organization_names_editor(org_id, org, key_prefix: str):
             org_id,
             name_zh,
             name_en,
+            name_display_mode=display_mode,
         )
         if ok:
             st.success(t()["org_updated"])
@@ -943,6 +975,8 @@ def safe_get_profile(user_id: str):
             "organization_name": None,
             "organization_name_zh": None,
             "organization_name_en": None,
+            "organization_name_legacy": None,
+            "organization_name_display_mode": "auto",
             "organization_logo_url": None,
         }
 
@@ -1473,6 +1507,7 @@ def render_app_navigation(profile, tier, remaining):
                     organization_name=org_name,
                     organization_name_zh=profile.get("organization_name_zh"),
                     organization_name_en=profile.get("organization_name_en"),
+                    organization_name_display_mode=profile.get("organization_name_display_mode") or "auto",
                     org_role=org_role,
                 )
                 button_html = f'''
@@ -1800,7 +1835,8 @@ def render_org_settings_tab(profile, *, include_uploader: bool = True, uploaded=
     org_record = {
         "name_zh": profile.get("organization_name_zh"),
         "name_en": profile.get("organization_name_en"),
-        "name": profile.get("organization_name"),
+        "name": profile.get("organization_name_legacy"),
+        "name_display_mode": profile.get("organization_name_display_mode") or "auto",
     }
     render_organization_names_editor(org_id, org_record, "org_admin")
     st.markdown("---")

@@ -44,6 +44,12 @@ KB_COLUMN_WIDTHS = {
 LOGO_MAX_BYTES = 500_000
 LOGO_ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 DEFAULT_CONTRACT_YEARS = 1
+NAME_DISPLAY_MODES = ("auto", "zh", "en")
+
+
+def normalize_name_display_mode(value: Any) -> str:
+    mode = str(value or "auto").strip().lower()
+    return mode if mode in ("zh", "en") else "auto"
 
 
 def organization_display_name(
@@ -52,18 +58,25 @@ def organization_display_name(
     name_zh: Any = None,
     name_en: Any = None,
     name: Any = None,
+    name_display_mode: Any = "auto",
     org: Optional[Dict[str, Any]] = None,
 ) -> str:
     if org is not None:
         name_zh = org.get("name_zh")
         name_en = org.get("name_en")
         name = org.get("name")
+        name_display_mode = org.get("name_display_mode")
     zh = str(name_zh or "").strip()
     en = str(name_en or "").strip()
     legacy = str(name or "").strip()
+    mode = normalize_name_display_mode(name_display_mode)
+    if mode == "zh":
+        return zh or legacy or en
+    if mode == "en":
+        return en or legacy or zh
     if lang == "en":
-        return en or zh or legacy
-    return zh or en or legacy
+        return en or legacy or zh
+    return zh or legacy or en
 
 
 def organization_names_payload(name_zh: str, name_en: str) -> Optional[Dict[str, Any]]:
@@ -229,6 +242,8 @@ def get_full_profile(
         "organization_name": None,
         "organization_name_zh": None,
         "organization_name_en": None,
+        "organization_name_legacy": None,
+        "organization_name_display_mode": "auto",
         "organization_logo_url": None,
         "max_seats": None,
     }
@@ -260,12 +275,16 @@ def get_full_profile(
             supabase_url,
             headers,
             "organizations",
-            select="id,name,name_zh,name_en,max_seats,is_active,contract_expires_at,logo_url,enabled_apps",
+            select="id,name,name_zh,name_en,name_display_mode,max_seats,is_active,contract_expires_at,logo_url,enabled_apps",
             filters={"id": org_id},
         )
         if org_rows:
-            profile["organization_name_zh"] = (org_rows[0].get("name_zh") or org_rows[0].get("name") or "").strip() or None
+            profile["organization_name_zh"] = (org_rows[0].get("name_zh") or "").strip() or None
             profile["organization_name_en"] = (org_rows[0].get("name_en") or "").strip() or None
+            profile["organization_name_legacy"] = (org_rows[0].get("name") or "").strip() or None
+            profile["organization_name_display_mode"] = normalize_name_display_mode(
+                org_rows[0].get("name_display_mode")
+            )
             profile["organization_name"] = organization_display_name(org=org_rows[0], lang="zh")
             profile["organization_logo_url"] = org_rows[0].get("logo_url")
             profile["max_seats"] = org_rows[0].get("max_seats")
@@ -288,7 +307,7 @@ def list_organizations(supabase_url: str, headers: Dict[str, str]) -> List[Dict[
         supabase_url,
         headers,
         "organizations",
-        select="id,name,name_zh,name_en,max_seats,is_active,contract_expires_at,logo_url,enabled_apps,created_at",
+        select="id,name,name_zh,name_en,name_display_mode,max_seats,is_active,contract_expires_at,logo_url,enabled_apps,created_at",
         order="name.asc",
     )
 
@@ -314,6 +333,7 @@ def create_organization(
             "max_seats": max_seats,
             "is_active": True,
             "enabled_apps": default_enabled_apps(),
+            "name_display_mode": "auto",
             "contract_expires_at": contract_expires_after_years(contract_years),
             "created_at": datetime.now().isoformat(),
         },
@@ -336,21 +356,27 @@ def set_organization_names(
     org_id: str,
     name_zh: str,
     name_en: str,
+    *,
+    name_display_mode: str = "auto",
 ) -> tuple[bool, str]:
     names = organization_names_payload(name_zh, name_en)
     if not names:
         return False, "name_required"
+    payload = {
+        **names,
+        "name_display_mode": normalize_name_display_mode(name_display_mode),
+    }
     ok, detail = supabase_update(
         supabase_url,
         headers,
         "organizations",
         org_id,
-        names,
+        payload,
     )
     if ok:
         return True, ""
     lowered = (detail or "").lower()
-    if "name_zh" in lowered or "name_en" in lowered:
+    if "name_zh" in lowered or "name_en" in lowered or "name_display_mode" in lowered:
         if "column" in lowered:
             return False, "missing_column"
     return False, detail or "update_failed"

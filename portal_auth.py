@@ -24,6 +24,7 @@ def create_portal_token(
     organization_name: Optional[str] = None,
     organization_name_zh: Optional[str] = None,
     organization_name_en: Optional[str] = None,
+    organization_name_display_mode: Optional[str] = None,
     org_role: Optional[str] = None,
 ) -> Optional[str]:
     secret = _jwt_secret_or_none()
@@ -47,6 +48,8 @@ def create_portal_token(
             payload["organization_name_zh"] = organization_name_zh
         if organization_name_en:
             payload["organization_name_en"] = organization_name_en
+        if organization_name_display_mode:
+            payload["organization_name_display_mode"] = organization_name_display_mode
         payload["org_role"] = org_role or "member"
     try:
         return jwt.encode(payload, secret, algorithm="HS256")
@@ -76,6 +79,7 @@ def build_app_launch_url(
     organization_name: Optional[str] = None,
     organization_name_zh: Optional[str] = None,
     organization_name_en: Optional[str] = None,
+    organization_name_display_mode: Optional[str] = None,
     org_role: Optional[str] = None,
     include_legacy_params: bool = True,
 ) -> str:
@@ -90,6 +94,7 @@ def build_app_launch_url(
         organization_name=organization_name,
         organization_name_zh=organization_name_zh,
         organization_name_en=organization_name_en,
+        organization_name_display_mode=organization_name_display_mode,
         org_role=org_role,
     )
     params: Dict[str, str] = {"lang": lang}
