@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import quote
@@ -43,6 +43,39 @@ KB_COLUMN_WIDTHS = {
 }
 LOGO_MAX_BYTES = 500_000
 LOGO_ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+DEFAULT_CONTRACT_YEARS = 1
+
+
+def contract_expires_after_years(years: int = DEFAULT_CONTRACT_YEARS) -> str:
+    base = datetime.now()
+    try:
+        expires = base.replace(year=base.year + years)
+    except ValueError:
+        expires = base + timedelta(days=365 * years)
+    return expires.isoformat()
+
+
+def parse_contract_expires_date(value: Any) -> Optional[date]:
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        return datetime.fromisoformat(text).date()
+    except ValueError:
+        return None
+
+
+def format_contract_expires(value: Any, fallback: str = "-") -> str:
+    parsed = parse_contract_expires_date(value)
+    return parsed.isoformat() if parsed else fallback
+
+
+def contract_expires_at_from_date(value: date) -> str:
+    return datetime.combine(value, time(23, 59, 59)).isoformat()
 
 
 def _parse_auth_users(data: Any) -> List[Dict[str, Any]]:
@@ -201,6 +234,7 @@ def get_full_profile(
             profile["max_seats"] = org_rows[0].get("max_seats")
             profile["org_is_active"] = org_rows[0].get("is_active", True)
             profile["enabled_apps"] = normalize_enabled_apps(org_rows[0].get("enabled_apps"))
+            profile["contract_expires_at"] = org_rows[0].get("contract_expires_at")
     return profile
 
 
@@ -217,6 +251,7 @@ def list_organizations(supabase_url: str, headers: Dict[str, str]) -> List[Dict[
         supabase_url,
         headers,
         "organizations",
+        select="id,name,max_seats,is_active,contract_expires_at,logo_url,enabled_apps,created_at",
         order="name.asc",
     )
 
@@ -226,6 +261,8 @@ def create_organization(
     headers: Dict[str, str],
     name: str,
     max_seats: int,
+    *,
+    contract_years: int = DEFAULT_CONTRACT_YEARS,
 ) -> Optional[Dict[str, Any]]:
     return supabase_insert(
         supabase_url,
@@ -236,6 +273,7 @@ def create_organization(
             "max_seats": max_seats,
             "is_active": True,
             "enabled_apps": default_enabled_apps(),
+            "contract_expires_at": contract_expires_after_years(contract_years),
             "created_at": datetime.now().isoformat(),
         },
     )

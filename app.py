@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import stripe
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Dict, Optional
 
 from portal_apps import (
@@ -27,6 +27,11 @@ from enterprise_utils import (
     clear_organization_logo,
     count_org_members,
     create_organization,
+    contract_expires_at_from_date,
+    contract_expires_after_years,
+    parse_contract_expires_date,
+    format_contract_expires,
+    DEFAULT_CONTRACT_YEARS,
     delete_organization,
     delete_tenant_knowledge,
     find_user_id_by_email,
@@ -221,6 +226,10 @@ TEXTS = {
         "create_org": "创建企业",
         "org_name": "企业名称",
         "max_seats": "席位上限",
+        "contract_years": "使用年限（年）",
+        "contract_expires": "到期日期",
+        "contract_expires_col": "到期日",
+        "contract_expires_unset": "未设置",
         "assign_user_org": "绑定用户到企业",
         "org_list": "企业列表",
         "select_org": "选择企业",
@@ -399,6 +408,10 @@ Let AI be your Chief Product Development Engineer.
         "create_org": "Create Organization",
         "org_name": "Organization Name",
         "max_seats": "Max Seats",
+        "contract_years": "Contract term (years)",
+        "contract_expires": "Expiry date",
+        "contract_expires_col": "Expires",
+        "contract_expires_unset": "Not set",
         "assign_user_org": "Assign User to Organization",
         "org_list": "Organization List",
         "select_org": "Select Organization",
@@ -641,6 +654,8 @@ PLATFORM_ADMIN_WIDGET_KEYS = (
     "org_minus_btn",
     "confirm_delete_org_btn",
     "cancel_delete_org_btn",
+    "platform_org_max_seats",
+    "platform_org_contract_expires",
     "platform_update_org_btn",
     "platform_org_enabled_apps",
     "platform_org_apps_save_btn",
@@ -1810,9 +1825,21 @@ def render_platform_enterprise_section(users):
         with st.form("platform_create_org", border=True):
             org_name = st.text_input(t()["org_name"])
             max_seats = st.number_input(t()["max_seats"], min_value=1, max_value=500, value=10)
+            contract_years = st.number_input(
+                t()["contract_years"],
+                min_value=1,
+                max_value=10,
+                value=DEFAULT_CONTRACT_YEARS,
+            )
             submitted = st.form_submit_button(t()["create_org"], type="primary", use_container_width=True)
             if submitted and org_name.strip():
-                created = create_organization(SUPABASE_URL, SERVICE_HEADERS, org_name.strip(), int(max_seats))
+                created = create_organization(
+                    SUPABASE_URL,
+                    SERVICE_HEADERS,
+                    org_name.strip(),
+                    int(max_seats),
+                    contract_years=int(contract_years),
+                )
                 if created:
                     st.session_state.pending_delete_org_id = None
                     st.success(t()["org_created"])
@@ -1830,6 +1857,10 @@ def render_platform_enterprise_section(users):
             enabled_count = len(org_enabled_apps(org))
             org_rows.append({
                 t()["org_name"]: org.get("name"),
+                t()["contract_expires_col"]: format_contract_expires(
+                    org.get("contract_expires_at"),
+                    fallback=t()["contract_expires_unset"],
+                ),
                 t()["max_seats"]: org.get("max_seats"),
                 t()["seats_used"]: member_count,
                 t()["org_apps_col"]: f"{enabled_count}/{len(PORTAL_APP_KEYS)}",
@@ -1862,8 +1893,13 @@ def render_platform_enterprise_section(users):
         def _org_option_label(oid: str) -> str:
             item = org_lookup.get(oid, {})
             short_id = (oid or "")[:8]
+            expires_label = format_contract_expires(
+                item.get("contract_expires_at"),
+                fallback=t()["contract_expires_unset"],
+            )
             return (
-                f"{item.get('name', '-')} | {item.get('member_count', 0)}/{item.get('max_seats', 0)} | {short_id}"
+                f"{item.get('name', '-')} | {t()['contract_expires_col']}: {expires_label} | "
+                f"{item.get('member_count', 0)}/{item.get('max_seats', 0)} | {short_id}"
             )
 
         selected_org_id = st.selectbox(
@@ -1872,7 +1908,7 @@ def render_platform_enterprise_section(users):
             format_func=_org_option_label,
             key="platform_selected_org_id",
         )
-        st.table(org_rows)
+        st.dataframe(org_rows, use_container_width=True, hide_index=True)
 
         selected_org = org_lookup.get(selected_org_id, {})
 
@@ -1905,15 +1941,39 @@ def render_platform_enterprise_section(users):
             st.session_state.pending_delete_org_id = None
 
         st.markdown("---")
-        new_max = st.number_input(
-            t()["max_seats"],
-            min_value=1,
-            max_value=500,
-            value=int(selected_org.get("max_seats") or 10),
-            key="platform_org_max_seats",
-        )
+        col_seats, col_expires = st.columns(2)
+        with col_seats:
+            new_max = st.number_input(
+                t()["max_seats"],
+                min_value=1,
+                max_value=500,
+                value=int(selected_org.get("max_seats") or 10),
+                key="platform_org_max_seats",
+            )
+        with col_expires:
+            default_contract_date = parse_contract_expires_date(selected_org.get("contract_expires_at"))
+            if default_contract_date is None:
+                default_contract_date = contract_expires_after_years(DEFAULT_CONTRACT_YEARS)
+                default_contract_date = parse_contract_expires_date(default_contract_date) or (
+                    date.today() + timedelta(days=365)
+                )
+            if st.session_state.get("_platform_contract_org_id") != selected_org_id:
+                st.session_state._platform_contract_org_id = selected_org_id
+                st.session_state["platform_org_contract_expires"] = default_contract_date
+            new_expires = st.date_input(
+                t()["contract_expires"],
+                key="platform_org_contract_expires",
+            )
         if st.button(t()["update_btn"], key="platform_update_org_btn", use_container_width=True):
-            if update_organization(SUPABASE_URL, SERVICE_HEADERS, selected_org_id, {"max_seats": int(new_max)}):
+            if update_organization(
+                SUPABASE_URL,
+                SERVICE_HEADERS,
+                selected_org_id,
+                {
+                    "max_seats": int(new_max),
+                    "contract_expires_at": contract_expires_at_from_date(new_expires),
+                },
+            ):
                 st.success(t()["org_updated"])
                 st.rerun()
 
