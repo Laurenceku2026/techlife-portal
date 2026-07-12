@@ -529,8 +529,7 @@ def reset_to_guest_session():
     st.session_state.show_register = False
     st.session_state.reset_password = False
     st.session_state.pending_delete_org_id = None
-    _clear_admin_tab_query_param()
-    _clear_org_tab_query_param()
+    _scrub_admin_url_query_params()
     if password_flash:
         st.session_state._password_changed_flash = True
 
@@ -572,6 +571,9 @@ def apply_pending_guest_reset():
 
 PLATFORM_ADMIN_WIDGET_KEYS = (
     "platform_admin_section",
+    "platform_tab_btn_users",
+    "platform_tab_btn_orgs",
+    "platform_tab_btn_kb",
     "platform_kb_org_id",
     "platform_selected_org_id",
     "platform_kb_download_template_btn",
@@ -624,11 +626,13 @@ def apply_pending_admin_login():
     st.session_state.user_email = ADMIN_EMAIL or ""
     st.session_state.user_id = "admin"
     st.session_state.platform_admin_section = "users"
-    st.query_params["admin_tab"] = "users"
 
 
 ORG_ADMIN_WIDGET_KEYS = (
     "org_admin_section",
+    "org_tab_btn_members",
+    "org_tab_btn_kb",
+    "org_tab_btn_settings",
     "org_remove_select",
     "org_remove_btn",
     "kb_download_template_btn",
@@ -696,6 +700,65 @@ def _clear_org_admin_section_keys(section: str):
                 st.session_state.pop(key, None)
 
 
+_HIDDEN_ADMIN_TAB_CSS = """
+<style>
+div[data-testid="stExpander"] details > summary {
+    display: none !important;
+}
+div[data-testid="stExpander"] details {
+    border: none !important;
+}
+div[data-testid="stExpander"] .streamlit-expanderContent {
+    border: none !important;
+    padding-top: 0 !important;
+}
+</style>
+"""
+
+
+def _scrub_admin_url_query_params():
+    for param in ("admin_tab", "org_tab"):
+        if param in st.query_params:
+            del st.query_params[param]
+
+
+def request_org_admin_section_switch(target_section: str):
+    if st.session_state.get("org_admin_section", "members") == target_section:
+        return
+    st.session_state.org_admin_section = target_section
+    st.session_state._org_admin_active_section = target_section
+
+
+def request_platform_admin_section_switch(target_section: str):
+    if st.session_state.get("platform_admin_section", "users") == target_section:
+        return
+    st.session_state.platform_admin_section = target_section
+
+
+def _render_admin_tab_buttons(
+    section_labels: Dict[str, str],
+    selected_section: str,
+    key_prefix: str,
+    on_switch,
+):
+    tab_keys = list(section_labels.keys())
+    cols = st.columns(len(tab_keys))
+    for col, tab_key in zip(cols, tab_keys):
+        with col:
+            st.button(
+                section_labels[tab_key],
+                key=f"{key_prefix}_tab_btn_{tab_key}",
+                type="primary" if selected_section == tab_key else "secondary",
+                use_container_width=True,
+                disabled=selected_section == tab_key,
+                on_click=on_switch,
+                args=(tab_key,),
+            )
+
+
+def _render_hidden_expander_tab_css():
+    st.markdown(_HIDDEN_ADMIN_TAB_CSS, unsafe_allow_html=True)
+
 
 def _clear_org_admin_widget_keys():
     for key in ORG_ADMIN_WIDGET_KEYS:
@@ -719,13 +782,11 @@ def apply_pending_org_admin_entry():
         st.session_state.org_admin_mode = True
         st.session_state.org_admin_section = "members"
         st.session_state._org_admin_active_section = "members"
-        st.query_params["org_tab"] = "members"
 
 
 def apply_pending_org_admin_exit():
     if st.session_state.pop("_exit_org_admin_pending", False):
         reset_to_authenticated_main_session()
-        _clear_org_tab_query_param()
 
 
 def _safe_date_prefix(value, fallback: str = "-") -> str:
@@ -1576,13 +1637,13 @@ def render_org_admin_panel():
         selected_section = "members"
         st.session_state.org_admin_section = "members"
 
-    _render_query_param_tab_nav(section_labels, selected_section, "org_tab")
-
-    if selected_section == "members":
+    _render_admin_tab_buttons(section_labels, selected_section, "org", request_org_admin_section_switch)
+    _render_hidden_expander_tab_css()
+    with st.expander(section_labels["members"], expanded=(selected_section == "members")):
         render_org_members_tab(profile)
-    elif selected_section == "kb":
+    with st.expander(section_labels["kb"], expanded=(selected_section == "kb")):
         render_org_kb_tab(profile)
-    else:
+    with st.expander(section_labels["settings"], expanded=(selected_section == "settings")):
         render_org_logo_section(
             profile.get("organization_id"),
             profile.get("organization_logo_url"),
@@ -1955,83 +2016,6 @@ def render_admin_user_section(users, auth_users):
             st.rerun()
 
 
-PLATFORM_ADMIN_SECTIONS = ("users", "orgs", "kb")
-ORG_ADMIN_SECTIONS = ("members", "kb", "settings")
-
-
-def _query_param_value(name: str) -> Optional[str]:
-    raw = st.query_params.get(name)
-    if isinstance(raw, list):
-        return raw[0] if raw else None
-    return raw
-
-
-def _clear_admin_tab_query_param():
-    if "admin_tab" in st.query_params:
-        del st.query_params["admin_tab"]
-
-
-def _clear_org_tab_query_param():
-    if "org_tab" in st.query_params:
-        del st.query_params["org_tab"]
-
-
-def sync_platform_admin_tab_from_query_params():
-    if not st.session_state.get("admin_mode"):
-        return
-    admin_tab = _query_param_value("admin_tab")
-    if admin_tab in PLATFORM_ADMIN_SECTIONS:
-        st.session_state.platform_admin_section = admin_tab
-
-
-def sync_org_admin_tab_from_query_params():
-    if not st.session_state.get("org_admin_mode"):
-        return
-    org_tab = _query_param_value("org_tab")
-    if org_tab in ORG_ADMIN_SECTIONS:
-        st.session_state.org_admin_section = org_tab
-        st.session_state._org_admin_active_section = org_tab
-
-
-def _admin_tab_nav_css(*, active: bool) -> str:
-    if active:
-        return (
-            "display:block;width:100%;box-sizing:border-box;text-align:center;"
-            "padding:0.45rem 0.75rem;border-radius:0.5rem;background:#ff4b4b;"
-            "color:#ffffff;text-decoration:none;font-weight:600;opacity:0.65;"
-            "cursor:default;pointer-events:none;"
-        )
-    return (
-        "display:block;width:100%;box-sizing:border-box;text-align:center;"
-        "padding:0.45rem 0.75rem;border-radius:0.5rem;background:#f0f2f6;"
-        "color:#31333f;text-decoration:none;font-weight:600;border:1px solid #d6d6d8;"
-    )
-
-
-def _render_query_param_tab_nav(
-    section_labels: Dict[str, str],
-    selected_section: str,
-    param_name: str,
-):
-    # Browser navigation avoids Streamlit reruns that can segfault when widgets unmount.
-    tab_keys = list(section_labels.keys())
-    cols = st.columns(len(tab_keys))
-    for col, tab_key in zip(cols, tab_keys):
-        label = section_labels[tab_key]
-        with col:
-            if tab_key == selected_section:
-                st.markdown(
-                    f'<span style="{_admin_tab_nav_css(active=True)}">{label}</span>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f'<a href="?{param_name}={tab_key}" style="{_admin_tab_nav_css(active=False)}">'
-                    f"{label}</a>",
-                    unsafe_allow_html=True,
-                )
-
-
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     try:
@@ -2069,21 +2053,26 @@ def render_admin_panel():
             selected_section = "users"
             st.session_state.platform_admin_section = "users"
 
-        _render_query_param_tab_nav(section_labels, selected_section, "admin_tab")
-
-        if selected_section == "users":
+        _render_admin_tab_buttons(
+            section_labels,
+            selected_section,
+            "platform",
+            request_platform_admin_section_switch,
+        )
+        _render_hidden_expander_tab_css()
+        with st.expander(section_labels["users"], expanded=(selected_section == "users")):
             try:
                 render_admin_user_section(users, auth_users)
             except Exception as exc:
                 st.error("用户管理加载失败" if st.session_state.lang == "zh" else "Failed to load user management")
                 st.exception(exc)
-        elif selected_section == "orgs":
+        with st.expander(section_labels["orgs"], expanded=(selected_section == "orgs")):
             try:
                 render_platform_enterprise_section(users)
             except Exception as exc:
                 st.error("企业管理加载失败" if st.session_state.lang == "zh" else "Failed to load organization management")
                 st.exception(exc)
-        else:
+        with st.expander(section_labels["kb"], expanded=(selected_section == "kb")):
             try:
                 render_platform_org_kb_section()
             except Exception as exc:
@@ -2106,8 +2095,7 @@ def main():
     try:
         apply_pending_guest_reset()
         apply_pending_admin_login()
-        sync_platform_admin_tab_from_query_params()
-        sync_org_admin_tab_from_query_params()
+        _scrub_admin_url_query_params()
         apply_pending_org_admin_entry()
         apply_pending_org_admin_exit()
         if not st.session_state.get("authenticated"):
