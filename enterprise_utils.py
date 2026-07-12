@@ -10,6 +10,7 @@ from urllib.parse import quote
 import requests
 
 from kb_translate import bilingualize_kb_content
+from portal_apps import default_enabled_apps, normalize_enabled_apps
 
 KNOWLEDGE_CATEGORIES = ["光学", "机械", "材料", "热学", "电气", "控制", "其他"]
 KB_CATEGORY_HEADERS = [
@@ -191,7 +192,7 @@ def get_full_profile(
             supabase_url,
             headers,
             "organizations",
-            select="id,name,max_seats,is_active,contract_expires_at,logo_url",
+            select="id,name,max_seats,is_active,contract_expires_at,logo_url,enabled_apps",
             filters={"id": org_id},
         )
         if org_rows:
@@ -199,6 +200,7 @@ def get_full_profile(
             profile["organization_logo_url"] = org_rows[0].get("logo_url")
             profile["max_seats"] = org_rows[0].get("max_seats")
             profile["org_is_active"] = org_rows[0].get("is_active", True)
+            profile["enabled_apps"] = normalize_enabled_apps(org_rows[0].get("enabled_apps"))
     return profile
 
 
@@ -233,6 +235,7 @@ def create_organization(
             "name": name.strip(),
             "max_seats": max_seats,
             "is_active": True,
+            "enabled_apps": default_enabled_apps(),
             "created_at": datetime.now().isoformat(),
         },
     )
@@ -246,6 +249,27 @@ def update_organization(
 ) -> bool:
     ok, _ = supabase_update(supabase_url, headers, "organizations", org_id, data)
     return ok
+
+
+def set_organization_enabled_apps(
+    supabase_url: str,
+    headers: Dict[str, str],
+    org_id: str,
+    app_keys: List[str],
+) -> tuple[bool, str]:
+    enabled = normalize_enabled_apps(app_keys)
+    ok, detail = supabase_update(
+        supabase_url,
+        headers,
+        "organizations",
+        org_id,
+        {"enabled_apps": enabled},
+    )
+    if ok:
+        return True, ""
+    if "enabled_apps" in (detail or "") and "column" in (detail or "").lower():
+        return False, "missing_column"
+    return False, detail or "update_failed"
 
 
 def set_organization_logo(

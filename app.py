@@ -4,6 +4,13 @@ import stripe
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 
+from portal_apps import (
+    PORTAL_APP_KEYS,
+    app_description,
+    app_display_name,
+    normalize_enabled_apps,
+    org_enabled_apps,
+)
 from portal_auth import build_app_launch_url
 from portal_branding import inject_mobile_home_screen_meta, local_page_icon, render_add_to_home_screen_help
 from portal_enterprise_ui import enterprise_brand_markup
@@ -31,6 +38,7 @@ from enterprise_utils import (
     list_organizations,
     list_tenant_knowledge,
     remove_org_member,
+    set_organization_enabled_apps,
     set_organization_logo,
     update_organization,
     verify_login_credentials,
@@ -246,6 +254,14 @@ TEXTS = {
         "org_created": "企业已创建",
         "org_updated": "企业已更新",
         "user_assigned": "用户已绑定",
+        "org_apps_title": "企业应用权限",
+        "org_apps_hint": "选择该企业可使用的子应用。默认全部开启；可仅开通所需应用（例如只开 EML Calculator）。",
+        "org_apps_select": "已开通应用",
+        "org_apps_save": "保存应用权限",
+        "org_apps_saved": "应用权限已更新",
+        "org_apps_required": "至少选择一个应用",
+        "org_apps_migration_hint": "请先在 Supabase 执行 supabase_migration_org_apps.sql",
+        "org_apps_col": "开通应用",
         "assign_user_btn": "绑定并设置密码",
         "login_email_hint": "登录用户名为上方邮箱；新用户将自动创建账号，已有用户将重置为上述初始密码",
         "password_required": "请设置至少6位初始密码",
@@ -415,6 +431,14 @@ Let AI become your Chief Quality Engineer.
         "org_created": "Organization created",
         "org_updated": "Organization updated",
         "user_assigned": "User assigned",
+        "org_apps_title": "Organization App Access",
+        "org_apps_hint": "Choose which child apps this organization may launch. All apps are enabled by default; restrict to only what they need (e.g. EML Calculator only).",
+        "org_apps_select": "Enabled apps",
+        "org_apps_save": "Save app access",
+        "org_apps_saved": "App access updated",
+        "org_apps_required": "Select at least one app",
+        "org_apps_migration_hint": "Run supabase_migration_org_apps.sql in Supabase first",
+        "org_apps_col": "Apps enabled",
         "assign_user_btn": "Assign and Set Password",
         "login_email_hint": "Login username is the email above. New users are created; existing users get the password reset.",
         "password_required": "Initial password must be at least 6 characters",
@@ -616,6 +640,8 @@ PLATFORM_ADMIN_WIDGET_KEYS = (
     "confirm_delete_org_btn",
     "cancel_delete_org_btn",
     "platform_update_org_btn",
+    "platform_org_enabled_apps",
+    "platform_org_apps_save_btn",
     "platform_assign_email",
     "platform_assign_password",
     "platform_assign_role_email",
@@ -1319,50 +1345,33 @@ def render_app_navigation(profile, tier, remaining):
     st.markdown(f"### {t()['nav_title']}")
     st.caption(t()["open_new_tab"])
 
-    apps = {
-        "📊 Product Feasibility": {
-            "desc": "产品可行性分析 - 挖掘市场与用户之声",
-            "desc_en": "Product Feasibility - Voice of Market & Users",
-            "url": APP_URLS["feasibility"],
-        },
-        "🔍 AI-DQA": {
-            "desc": "设计风险分析 - AI赋能DFMEA",
-            "desc_en": "Design Risk Analysis - AI-powered DFMEA",
-            "url": APP_URLS["dqa"],
-        },
-        "🔬 AI-FA": {
-            "desc": "智能故障分析 - AI驱动5-Why根因定位与8D报告",
-            "desc_en": "Intelligent Failure Analysis - AI-powered 5-Why Root Cause & 8D Report",
-            "url": APP_URLS["fa"],
-        },
-        "📈 Para-Vary": {
-            "desc": "蒙特卡洛模拟 - 累积公差仿真",
-            "desc_en": "Monte Carlo Simulation - Tolerance Stack-up",
-            "url": APP_URLS["paravary"],
-        },
-        "💡 EML Calculator": {
-            "desc": "健康照明EML/m-EDI计算器 - 光谱分析与节律效应评估",
-            "desc_en": "Healthy Lighting EML/m-EDI Calculator - Spectral Analysis & Circadian Evaluation",
-            "url": APP_URLS["eml"],
-        },
-    }
-
     org_id = profile.get("organization_id")
+    if org_id:
+        enabled_keys = normalize_enabled_apps(profile.get("enabled_apps"))
+    else:
+        enabled_keys = list(PORTAL_APP_KEYS)
+
     org_name = profile.get("organization_name")
     org_role = profile.get("org_role")
+    lang = st.session_state.lang
 
-    for name, info in apps.items():
+    for app_key in PORTAL_APP_KEYS:
+        if app_key not in enabled_keys:
+            continue
+        if app_key not in APP_URLS:
+            continue
+        name = app_display_name(app_key, lang=lang)
+        desc = app_description(app_key, lang=lang)
         with st.container(border=True):
             col_name, col_desc, col_btn = st.columns([2, 3, 1])
             with col_name:
                 st.markdown(f"**{name}**")
             with col_desc:
-                desc = info["desc"] if st.session_state.lang == "zh" else info["desc_en"]
                 st.caption(desc)
             with col_btn:
-                lang_param = "zh" if st.session_state.lang == "zh" else "en"
+                lang_param = "zh" if lang == "zh" else "en"
                 full_url = build_app_launch_url(
-                    info["url"],
+                    APP_URLS[app_key],
                     st.session_state.user_id,
                     st.session_state.user_email,
                     lang_param,
@@ -1807,10 +1816,12 @@ def render_platform_enterprise_section(users):
             org_id = org.get("id")
             member_count = count_org_members(SUPABASE_URL, SERVICE_HEADERS, org_id)
             org_lookup[org_id] = {**org, "member_count": member_count}
+            enabled_count = len(org_enabled_apps(org))
             org_rows.append({
                 t()["org_name"]: org.get("name"),
                 t()["max_seats"]: org.get("max_seats"),
                 t()["seats_used"]: member_count,
+                t()["org_apps_col"]: f"{enabled_count}/{len(PORTAL_APP_KEYS)}",
                 "ID": org_id,
             })
 
@@ -1894,6 +1905,37 @@ def render_platform_enterprise_section(users):
             if update_organization(SUPABASE_URL, SERVICE_HEADERS, selected_org_id, {"max_seats": int(new_max)}):
                 st.success(t()["org_updated"])
                 st.rerun()
+
+        st.markdown("---")
+        st.subheader(t()["org_apps_title"])
+        st.caption(t()["org_apps_hint"])
+        current_apps = org_enabled_apps(selected_org)
+        if st.session_state.get("_platform_apps_org_id") != selected_org_id:
+            st.session_state._platform_apps_org_id = selected_org_id
+            st.session_state["platform_org_enabled_apps"] = current_apps
+        selected_apps = st.multiselect(
+            t()["org_apps_select"],
+            options=list(PORTAL_APP_KEYS),
+            format_func=lambda key: app_display_name(key, lang=st.session_state.lang),
+            key="platform_org_enabled_apps",
+        )
+        if st.button(t()["org_apps_save"], key="platform_org_apps_save_btn", use_container_width=True, type="primary"):
+            if not selected_apps:
+                st.warning(t()["org_apps_required"])
+            else:
+                ok, detail = set_organization_enabled_apps(
+                    SUPABASE_URL,
+                    SERVICE_HEADERS,
+                    selected_org_id,
+                    selected_apps,
+                )
+                if ok:
+                    st.success(t()["org_apps_saved"])
+                    st.rerun()
+                elif detail == "missing_column":
+                    st.error(t()["org_apps_migration_hint"])
+                else:
+                    st.error(detail or t()["org_apps_migration_hint"])
 
         st.markdown("---")
         render_org_logo_section(
