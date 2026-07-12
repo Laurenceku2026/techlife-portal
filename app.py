@@ -12,7 +12,7 @@ from portal_apps import (
     org_enabled_apps,
 )
 from portal_auth import build_app_launch_url
-from portal_branding import inject_mobile_home_screen_meta, local_page_icon, render_add_to_home_screen_help
+from portal_branding import apply_streamlit_head_patch, inject_mobile_home_screen_meta, local_page_icon, render_add_to_home_screen_help
 from portal_enterprise_ui import enterprise_brand_markup
 from kb_translate import bilingualize_kb_content, make_kb_translators
 from enterprise_utils import (
@@ -51,6 +51,8 @@ from enterprise_utils import (
     verify_login_credentials,
     _parse_auth_users,
 )
+
+apply_streamlit_head_patch()
 
 # ==================== 页面配置 ====================
 st.set_page_config(page_title="DFSS", page_icon=local_page_icon(), layout="wide")
@@ -187,6 +189,7 @@ TEXTS = {
         "set_subscription": "设置订阅",
         "set_trials": "设置免费次数",
         "update_btn": "更新订阅",
+        "save_btn": "保存更新",
         "exit_admin": "退出管理员模式",
         "email_col": "邮箱",
         "subscription_col": "订阅",
@@ -314,7 +317,7 @@ TEXTS = {
         "logo_invalid_type": "仅支持 PNG、JPG 或 WebP",
         "logo_migration_hint": "请先在 Supabase 执行 supabase_migration_org_logo.sql",
         "add_home_title": "📱 添加到主屏幕（DFSS）",
-        "add_home_intro": "在手机浏览器打开本页后，可将 **DFSS** 图标添加到主屏幕，像 App 一样快速打开。若之前已安装且图标仍是 Streamlit 默认图标，请先删除旧快捷方式，重新「安装应用」或「添加到主屏幕」。",
+        "add_home_intro": "在手机浏览器打开本页后，可将 **DFSS** 图标添加到主屏幕，像 App 一样快速打开。",
         "add_home_ios": "**iPhone（Safari）**：分享 → **添加到主屏幕**",
         "add_home_android_chrome": "**Android（Chrome）**：菜单 ⋮ → **安装应用** 或 **添加到主屏幕**",
         "add_home_edge": "**Microsoft Edge**：菜单 ··· → **添加到手机** / **安装此站点为应用**",
@@ -377,6 +380,7 @@ Let AI be your Chief Product Development Engineer.
         "set_subscription": "Set Subscription",
         "set_trials": "Set Trials",
         "update_btn": "Update",
+        "save_btn": "Save changes",
         "exit_admin": "Exit Admin Mode",
         "email_col": "Email",
         "subscription_col": "Subscription",
@@ -504,7 +508,7 @@ Let AI be your Chief Product Development Engineer.
         "logo_invalid_type": "Only PNG, JPG, or WebP is supported",
         "logo_migration_hint": "Run supabase_migration_org_logo.sql in Supabase first",
         "add_home_title": "📱 Add to Home Screen (DFSS)",
-        "add_home_intro": "Open this page in your mobile browser to add the **DFSS** icon to your home screen. If an older shortcut still shows the default Streamlit icon, remove it first, then install or add to home screen again.",
+        "add_home_intro": "Open this page in your mobile browser to add the **DFSS** icon to your home screen.",
         "add_home_ios": "**iPhone (Safari)**: Share → **Add to Home Screen**",
         "add_home_android_chrome": "**Android (Chrome)**: Menu ⋮ → **Install app** or **Add to Home screen**",
         "add_home_edge": "**Microsoft Edge**: Menu ··· → **Add to phone** / **Install this site as an app**",
@@ -958,7 +962,7 @@ def render_organization_names_editor(org_id, org, key_prefix: str):
             key=f"{key_prefix}_org_name_fixed_lang",
         )
     display_mode = fixed_lang if lock_display else "auto"
-    if st.button(t()["update_btn"], key=f"{key_prefix}_save_names_btn", use_container_width=True):
+    if st.button(t()["save_btn"], key=f"{key_prefix}_save_names_btn", use_container_width=True):
         ok, reason = set_organization_names(
             SUPABASE_URL,
             SERVICE_HEADERS,
