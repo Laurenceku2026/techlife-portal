@@ -285,6 +285,8 @@ TEXTS = {
         "add_home_edge": "**Microsoft Edge**：菜单 ··· → **添加到手机** / **安装此站点为应用**",
         "add_home_xiaomi": "**小米浏览器**：菜单 → **添加到主屏幕** 或 **添加快捷方式到桌面**",
         "add_home_huawei": "**华为 / 荣耀浏览器**：菜单 → **添加至** / **添加到主屏幕**（或在收藏夹中选择 **添加到桌面**）",
+        "add_home_vivo": "**vivo 浏览器**：菜单 → **添加到桌面** 或 **添加快捷方式**（部分机型在「收藏」→ **添加到主屏幕**）",
+        "add_home_samsung": "**三星浏览器（Samsung Internet）**：菜单 ☰ → **添加页面至** → **主屏幕**",
         "settings_tab": "企业设置",
     },
     "en": {
@@ -452,6 +454,8 @@ Let AI become your Chief Quality Engineer.
         "add_home_edge": "**Microsoft Edge**: Menu ··· → **Add to phone** / **Install this site as an app**",
         "add_home_xiaomi": "**Xiaomi Browser**: Menu → **Add to Home screen** or **Add shortcut to desktop**",
         "add_home_huawei": "**Huawei / Honor Browser**: Menu → **Add to** / **Add to Home screen** (or **Add to desktop** from bookmarks)",
+        "add_home_vivo": "**vivo Browser**: Menu → **Add to desktop** or **Add shortcut** (on some models: **Bookmarks** → **Add to Home screen**)",
+        "add_home_samsung": "**Samsung Internet**: Menu ☰ → **Add page to** → **Home screen**",
         "settings_tab": "Settings",
     }
 }

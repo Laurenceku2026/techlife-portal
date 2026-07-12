@@ -89,3 +89,5 @@ def render_add_to_home_screen_help(*, translate: Callable[[], dict]):
         st.markdown(text["add_home_edge"])
         st.markdown(text["add_home_xiaomi"])
         st.markdown(text["add_home_huawei"])
+        st.markdown(text["add_home_vivo"])
+        st.markdown(text["add_home_samsung"])
