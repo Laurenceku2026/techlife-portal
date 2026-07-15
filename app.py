@@ -100,9 +100,16 @@ if _stripe_key:
     stripe.api_key = _stripe_key
 
 # ==================== Supabase 配置 ====================
-SUPABASE_URL = _require_secret("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = _require_secret("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_KEY")
-SUPABASE_ANON_KEY = _get_secret("SUPABASE_ANON_KEY") or SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_URL = _require_secret("SUPABASE_URL", "SUPABASE_STOCK_URL")
+SUPABASE_SERVICE_ROLE_KEY = _require_secret(
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_STOCK_SECRET_KEY",
+    "SUPABASE_KEY",
+)
+SUPABASE_ANON_KEY = (
+    _get_secret("SUPABASE_ANON_KEY", "SUPABASE_STOCK_ANON_KEY")
+    or SUPABASE_SERVICE_ROLE_KEY
+)
 
 SERVICE_HEADERS = {
     "apikey": SUPABASE_SERVICE_ROLE_KEY,
