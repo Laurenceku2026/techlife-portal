@@ -2555,36 +2555,6 @@ def render_platform_enterprise_section(users):
         st.exception(exc)
 
 
-def _render_admin_db_banner():
-    """Always-visible Supabase connection banner for platform admin."""
-    writable, key_kind = _service_key_looks_writable()
-    project_host = (SUPABASE_URL or "").replace("https://", "").replace("http://", "").split("/")[0]
-    if st.session_state.lang == "zh":
-        line = (
-            f"**数据库连接**  \n"
-            f"- Project: `{project_host}`  \n"
-            f"- Schema: `{SUPABASE_DB_SCHEMA}`  \n"
-            + (f"- App ID: `{APP_ID}`  \n" if APP_ID else "")
-            + f"- 写入密钥: {'可用' if writable else '不可用'}（{key_kind}）"
-        )
-    else:
-        line = (
-            f"**Database connection**  \n"
-            f"- Project: `{project_host}`  \n"
-            f"- Schema: `{SUPABASE_DB_SCHEMA}`  \n"
-            + (f"- App ID: `{APP_ID}`  \n" if APP_ID else "")
-            + f"- Write key: {'ok' if writable else 'blocked'} ({key_kind})"
-        )
-    st.info(line)
-    if not writable:
-        st.error(
-            f"无法写入 profiles：当前密钥识别为 **{key_kind}**。"
-            "请使用 Supabase **service_role / sb_secret_**，不要用 anon / publishable。"
-            if st.session_state.lang == "zh"
-            else f"Cannot write profiles: key looks like **{key_kind}**. Use service_role / sb_secret_."
-        )
-
-
 def render_admin_user_section(users, auth_users):
     flash = st.session_state.pop("_admin_flash", None)
     if flash:
@@ -2593,6 +2563,35 @@ def render_admin_user_section(users, auth_users):
             st.error(message)
         else:
             st.success(message)
+
+    writable, key_kind = _service_key_looks_writable()
+    project_host = (SUPABASE_URL or "").replace("https://", "").replace("http://", "").split("/")[0]
+    st.caption(
+        f"当前数据库: `{project_host}` ｜ schema: `{SUPABASE_DB_SCHEMA}`"
+        + (f" ｜ app_id: `{APP_ID}`" if APP_ID else "")
+        + f" ｜ 写入密钥: {'可用' if writable else '不可用'}（{key_kind}）"
+        if st.session_state.lang == "zh"
+        else f"DB: `{project_host}` | schema: `{SUPABASE_DB_SCHEMA}`"
+        + (f" | app_id: `{APP_ID}`" if APP_ID else "")
+        + f" | Write key: {'ok' if writable else 'blocked'} ({key_kind})"
+    )
+    if SUPABASE_DB_SCHEMA == "public":
+        st.warning(
+            "当前写入 schema=`public`。若本项目用户在独立 schema（多 app 隔离），请在 Secrets 增加 "
+            "`SUPABASE_DB_SCHEMA=\"你的schema名\"`，必要时再加 `APP_ID=\"...\"`，否则会改到错误的表。"
+            if st.session_state.lang == "zh"
+            else "Writes currently use schema=`public`. If this app uses an isolated schema, set "
+            "`SUPABASE_DB_SCHEMA` (and optional `APP_ID`) in Secrets."
+        )
+    if not writable:
+        st.error(
+            f"无法写入 profiles：当前 SUPABASE_SERVICE_ROLE_KEY 识别为 **{key_kind}**。"
+            "请到 Streamlit Cloud → Settings → Secrets，改成 Supabase 的 **service_role**（或 sb_secret_）密钥，"
+            "不要使用 anon / publishable。"
+            if st.session_state.lang == "zh"
+            else f"Cannot write profiles: SUPABASE_SERVICE_ROLE_KEY looks like **{key_kind}**. "
+            "Use the Supabase service_role / sb_secret_ key in Streamlit Secrets, not anon/publishable."
+        )
 
     pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
     enterprise_users = [u for u in users if u.get("subscription_tier") == "enterprise"]
@@ -2849,7 +2848,6 @@ def render_admin_user_section(users, auth_users):
 
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
-    _render_admin_db_banner()
     try:
         response = supabase_get("profiles", limit=5000)
         raw_users = response.json() if response.status_code in (200, 206) else []
