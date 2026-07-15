@@ -165,19 +165,25 @@ def _kb_translators():
 
 def supabase_get(table: str, user_id: str = None, id_field: str = "id", *, limit: int = 1000):
     url = f"{SUPABASE_URL}/rest/v1/{table}"
+    headers = {**SERVICE_HEADERS, "Cache-Control": "no-cache"}
     if user_id:
         url += f"?{id_field}=eq.{quote(str(user_id), safe='')}&select=*"
     else:
         url += f"?select=*&order=email.asc&limit={int(limit)}"
-    headers = {
-        **SERVICE_HEADERS,
-        "Prefer": "count=exact",
-        "Range-Unit": "items",
-        "Range": f"0-{max(int(limit) - 1, 0)}",
-        "Cache-Control": "no-cache",
-    }
+        headers.update({
+            "Prefer": "count=exact",
+            "Range-Unit": "items",
+            "Range": f"0-{max(int(limit) - 1, 0)}",
+        })
     response = requests.get(url, headers=headers, timeout=30)
     return response
+
+
+def supabase_get_by_email(table: str, email: str):
+    encoded = quote(str(email or "").strip(), safe="")
+    url = f"{SUPABASE_URL}/rest/v1/{table}?email=eq.{encoded}&select=*"
+    headers = {**SERVICE_HEADERS, "Cache-Control": "no-cache"}
+    return requests.get(url, headers=headers, timeout=20)
 
 
 def supabase_patch(table: str, user_id: str, data: dict):
@@ -203,6 +209,16 @@ def supabase_patch_by_email(table: str, email: str, data: dict):
     return requests.patch(url, headers=headers, json=data, timeout=20)
 
 
+def supabase_rpc(fn_name: str, payload: dict):
+    url = f"{SUPABASE_URL}/rest/v1/rpc/{fn_name}"
+    headers = {
+        **SERVICE_HEADERS,
+        "Prefer": "return=representation",
+        "Cache-Control": "no-cache",
+    }
+    return requests.post(url, headers=headers, json=payload, timeout=20)
+
+
 def _parse_patch_rows(response) -> list:
     if response.status_code not in (200, 201):
         return []
@@ -213,6 +229,28 @@ def _parse_patch_rows(response) -> list:
     return body if isinstance(body, list) else []
 
 
+def _read_profile_trials(user_id: str = "", email: str = "") -> tuple[Optional[int], str]:
+    if user_id:
+        resp = supabase_get("profiles", user_id)
+        if resp.status_code in (200, 206):
+            try:
+                rows = resp.json()
+            except Exception:
+                rows = []
+            if isinstance(rows, list) and rows:
+                return rows[0].get("free_trials_remaining"), "id"
+    if email:
+        resp = supabase_get_by_email("profiles", email)
+        if resp.status_code in (200, 206):
+            try:
+                rows = resp.json()
+            except Exception:
+                rows = []
+            if isinstance(rows, list) and rows:
+                return rows[0].get("free_trials_remaining"), "email"
+    return None, "not_found"
+
+
 def supabase_patch_ok(table: str, user_id: str, data: dict, *, email: str = "") -> tuple[bool, str]:
     writable, key_kind = _service_key_looks_writable()
     if not writable:
@@ -221,39 +259,55 @@ def supabase_patch_ok(table: str, user_id: str, data: dict, *, email: str = "") 
             f"SUPABASE_SERVICE_ROLE_KEY 无效（当前识别为 {key_kind}）。请在 Streamlit Cloud Secrets 填写 service_role / sb_secret_，不要用 anon / publishable。",
         )
 
+    attempts = []
     response = supabase_patch(table, user_id, data)
     rows = _parse_patch_rows(response)
+    attempts.append(f"id→HTTP {response.status_code}, rows={len(rows)}")
+
     if not rows and email:
         response = supabase_patch_by_email(table, email, data)
         rows = _parse_patch_rows(response)
+        attempts.append(f"email→HTTP {response.status_code}, rows={len(rows)}")
 
-    if response.status_code not in (200, 201):
-        return False, response.text or f"HTTP {response.status_code}"
+    # Optional RPC fallback if SQL migration was applied.
+    if not rows and email and "free_trials_remaining" in data:
+        rpc_resp = supabase_rpc(
+            "admin_set_free_trials",
+            {"p_email": email.strip(), "p_trials": int(data["free_trials_remaining"])},
+        )
+        attempts.append(f"rpc→HTTP {rpc_resp.status_code}, body={(rpc_resp.text or '')[:180]}")
+        if rpc_resp.status_code in (200, 201):
+            try:
+                rpc_body = rpc_resp.json()
+            except Exception:
+                rpc_body = None
+            # RPC returns updated row count (int) or list.
+            if rpc_body is True or rpc_body == 1 or rpc_body == [1] or (
+                isinstance(rpc_body, int) and rpc_body > 0
+            ):
+                rows = [{"free_trials_remaining": int(data["free_trials_remaining"]), "id": user_id}]
+
+    if response.status_code not in (200, 201) and not rows:
+        return False, (response.text or f"HTTP {response.status_code}") + " | " + "; ".join(attempts)
     if not rows:
         return (
             False,
-            "数据库未更新任何行（可能是 service_role 配置错误，或用户 id/email 不匹配）。",
+            "数据库未更新任何行。请检查 Secrets 的 service_role，或在 Supabase 执行 supabase_migration_admin_set_trials.sql。"
+            + " | " + "; ".join(attempts),
         )
 
-    # Read back to confirm persistence for the critical trial field.
     if "free_trials_remaining" in data:
         expected = int(data["free_trials_remaining"])
-        uid = rows[0].get("id") or user_id
-        verify = supabase_get(table, uid)
-        if verify.status_code in (200, 206):
-            try:
-                verify_rows = verify.json()
-            except Exception:
-                verify_rows = []
-            if isinstance(verify_rows, list) and verify_rows:
-                actual = verify_rows[0].get("free_trials_remaining")
-                try:
-                    if int(actual) != expected:
-                        return False, f"写后读回仍为 {actual}（期望 {expected}）"
-                except (TypeError, ValueError):
-                    return False, f"写后读回无效值: {actual}"
-        written = rows[0].get("free_trials_remaining")
-        return True, f"ok:{written}"
+        actual, source = _read_profile_trials(user_id=str(user_id or ""), email=email)
+        if actual is None:
+            return False, f"写后无法读回 profiles（{source}）。" + " | " + "; ".join(attempts)
+        try:
+            actual_int = int(actual)
+        except (TypeError, ValueError):
+            return False, f"写后读回无效值: {actual}"
+        if actual_int != expected:
+            return False, f"写后读回仍为 {actual_int}（期望 {expected}，via {source}）"
+        return True, f"ok:{actual_int}"
     return True, "ok"
 
 
@@ -2396,7 +2450,20 @@ def render_platform_enterprise_section(users):
 
 
 def render_admin_user_section(users, auth_users):
+    flash = st.session_state.pop("_admin_flash", None)
+    if flash:
+        level, message = flash
+        if level == "error":
+            st.error(message)
+        else:
+            st.success(message)
+
     writable, key_kind = _service_key_looks_writable()
+    st.caption(
+        f"写入密钥状态: {'可用' if writable else '不可用'}（{key_kind}）"
+        if st.session_state.lang == "zh"
+        else f"Write key status: {'ok' if writable else 'blocked'} ({key_kind})"
+    )
     if not writable:
         st.error(
             f"无法写入 profiles：当前 SUPABASE_SERVICE_ROLE_KEY 识别为 **{key_kind}**。"
@@ -2478,6 +2545,8 @@ def render_admin_user_section(users, auth_users):
             st.info("暂无可选用户" if st.session_state.lang == "zh" else "No users to select")
             selected_user = None
             selected_email = None
+            live_trials = None
+            live_source = "none"
         else:
             def _admin_user_label(uid: str) -> str:
                 item = user_lookup.get(uid, {})
@@ -2494,6 +2563,15 @@ def render_admin_user_section(users, auth_users):
             selected_user = user_lookup.get(selected_user_id)
             selected_email = (selected_user or {}).get("email") or ""
             st.markdown(f"**{t()['current_user']}:** `{selected_email}`")
+            live_trials, live_source = _read_profile_trials(
+                user_id=str((selected_user or {}).get("id") or ""),
+                email=selected_email,
+            )
+            st.info(
+                f"数据库当前剩余次数: **{live_trials if live_trials is not None else '读取失败'}**（via {live_source}）"
+                if st.session_state.lang == "zh"
+                else f"DB trials now: **{live_trials if live_trials is not None else 'read failed'}** (via {live_source})"
+            )
 
         if selected_user:
             selected_user_id = str(selected_user.get("id"))
@@ -2512,7 +2590,9 @@ def render_admin_user_section(users, auth_users):
                     index=tier_index, key="admin_new_tier",
                 )
             with col_s2:
-                current_trials = _trials_display(selected_user.get("free_trials_remaining"))
+                current_trials = _trials_display(
+                    live_trials if live_trials is not None else selected_user.get("free_trials_remaining")
+                )
                 new_trials = st.number_input(
                     t()["set_trials"], min_value=0, max_value=999,
                     value=int(current_trials), key="admin_new_trials",
@@ -2550,10 +2630,10 @@ def render_admin_user_section(users, auth_users):
                     if ok:
                         st.session_state.pop("admin_new_trials", None)
                         st.session_state.pop("admin_new_tier", None)
-                        st.success(f"已更新 {selected_email}")
-                        st.rerun()
+                        st.session_state._admin_flash = ("ok", f"已更新 {selected_email}，写后读回确认成功")
                     else:
-                        st.error(f"更新失败: {detail}")
+                        st.session_state._admin_flash = ("error", f"更新失败: {detail}")
+                    st.rerun()
             with col_b2:
                 if st.button(t()["reset_trials_btn"], use_container_width=True, key="admin_reset_trials_btn"):
                     ok, detail = supabase_patch_ok(
@@ -2564,10 +2644,13 @@ def render_admin_user_section(users, auth_users):
                     )
                     if ok:
                         st.session_state.pop("admin_new_trials", None)
-                        st.success(t()["reset_trials_ok"].format(email=selected_email))
-                        st.rerun()
+                        st.session_state._admin_flash = (
+                            "ok",
+                            t()["reset_trials_ok"].format(email=selected_email) + f"（{detail}）",
+                        )
                     else:
-                        st.error(f"更新失败: {detail}")
+                        st.session_state._admin_flash = ("error", f"更新失败: {detail}")
+                    st.rerun()
             with col_b3:
                 if st.button("📧 发送密码重置邮件", use_container_width=True, key="admin_reset_pwd"):
                     try:
