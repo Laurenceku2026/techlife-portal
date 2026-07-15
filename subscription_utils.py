@@ -18,16 +18,16 @@ def _get_secret(*keys: str, default=None):
 
 def _get_supabase_url() -> Optional[str]:
     return _get_secret(
-        "SUPABASE_URL",
         "SUPABASE_STOCK_URL",
+        "SUPABASE_URL",
         "connections.supabase.SUPABASE_URL",
     )
 
 
 def _get_service_role_key() -> Optional[str]:
     return _get_secret(
-        "SUPABASE_SERVICE_ROLE_KEY",
         "SUPABASE_STOCK_SECRET_KEY",
+        "SUPABASE_SERVICE_ROLE_KEY",
         "SUPABASE_KEY",
         "connections.supabase.SUPABASE_SERVICE_ROLE_KEY",
     )

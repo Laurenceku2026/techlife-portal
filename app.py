@@ -100,14 +100,15 @@ if _stripe_key:
     stripe.api_key = _stripe_key
 
 # ==================== Supabase 配置 ====================
-SUPABASE_URL = _require_secret("SUPABASE_URL", "SUPABASE_STOCK_URL")
+# Prefer STOCK_* names first — Cloud secrets use these; old SUPABASE_* may point to another project.
+SUPABASE_URL = _require_secret("SUPABASE_STOCK_URL", "SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = _require_secret(
-    "SUPABASE_SERVICE_ROLE_KEY",
     "SUPABASE_STOCK_SECRET_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
     "SUPABASE_KEY",
 )
 SUPABASE_ANON_KEY = (
-    _get_secret("SUPABASE_ANON_KEY", "SUPABASE_STOCK_ANON_KEY")
+    _get_secret("SUPABASE_STOCK_ANON_KEY", "SUPABASE_ANON_KEY")
     or SUPABASE_SERVICE_ROLE_KEY
 )
 
@@ -2466,10 +2467,11 @@ def render_admin_user_section(users, auth_users):
             st.success(message)
 
     writable, key_kind = _service_key_looks_writable()
+    project_host = (SUPABASE_URL or "").replace("https://", "").replace("http://", "").split("/")[0]
     st.caption(
-        f"写入密钥状态: {'可用' if writable else '不可用'}（{key_kind}）"
+        f"当前数据库: `{project_host}` ｜ 写入密钥: {'可用' if writable else '不可用'}（{key_kind}）"
         if st.session_state.lang == "zh"
-        else f"Write key status: {'ok' if writable else 'blocked'} ({key_kind})"
+        else f"DB: `{project_host}` | Write key: {'ok' if writable else 'blocked'} ({key_kind})"
     )
     if not writable:
         st.error(
