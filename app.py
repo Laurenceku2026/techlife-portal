@@ -3,6 +3,7 @@ import requests
 import stripe
 from datetime import datetime, timedelta, date
 from typing import Dict, Optional
+from urllib.parse import quote
 
 from portal_apps import (
     PORTAL_APP_KEYS,
@@ -115,6 +116,45 @@ AUTH_HEADERS = {
 }
 
 
+def _jwt_claim_role(token: str) -> str:
+    """Read JWT role claim without verification (for key-type diagnostics)."""
+    try:
+        import base64
+        import json as _json
+
+        parts = (token or "").split(".")
+        if len(parts) < 2:
+            return ""
+        payload = parts[1] + ("=" * (-len(parts[1]) % 4))
+        data = _json.loads(base64.urlsafe_b64decode(payload.encode("utf-8")))
+        return str(data.get("role") or "")
+    except Exception:
+        return ""
+
+
+def _service_key_looks_writable() -> tuple[bool, str]:
+    key = (SUPABASE_SERVICE_ROLE_KEY or "").strip()
+    if not key:
+        return False, "missing_service_role_key"
+    if key.startswith("sb_publishable_"):
+        return False, "publishable/anon"
+    if key.startswith("eyJ"):
+        role = _jwt_claim_role(key)
+        if role in ("anon", "authenticated"):
+            return False, role
+        if role == "service_role":
+            return True, role
+    if key.startswith("sb_secret_"):
+        return True, "secret"
+    role = _jwt_claim_role(key)
+    if role == "service_role":
+        return True, role
+    if role in ("anon", "authenticated"):
+        return False, role
+    # Unknown non-JWT format — allow attempt, but surface role for debugging.
+    return True, role or "unknown"
+
+
 def _kb_translators():
     return make_kb_translators(
         _get_secret("DEEPSEEK_API_KEY"),
@@ -126,7 +166,7 @@ def _kb_translators():
 def supabase_get(table: str, user_id: str = None, id_field: str = "id", *, limit: int = 1000):
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     if user_id:
-        url += f"?{id_field}=eq.{user_id}&select=*"
+        url += f"?{id_field}=eq.{quote(str(user_id), safe='')}&select=*"
     else:
         url += f"?select=*&order=email.asc&limit={int(limit)}"
     headers = {
@@ -142,7 +182,7 @@ def supabase_get(table: str, user_id: str = None, id_field: str = "id", *, limit
 
 def supabase_patch(table: str, user_id: str, data: dict):
     """Patch a row and return the updated representation (empty list if nothing updated)."""
-    url = f"{SUPABASE_URL}/rest/v1/{table}?id=eq.{user_id}"
+    url = f"{SUPABASE_URL}/rest/v1/{table}?id=eq.{quote(str(user_id), safe='')}"
     headers = {
         **SERVICE_HEADERS,
         "Prefer": "return=representation",
@@ -152,17 +192,69 @@ def supabase_patch(table: str, user_id: str, data: dict):
     return response
 
 
-def supabase_patch_ok(table: str, user_id: str, data: dict) -> tuple[bool, str]:
-    response = supabase_patch(table, user_id, data)
+def supabase_patch_by_email(table: str, email: str, data: dict):
+    encoded = quote(str(email or "").strip(), safe="")
+    url = f"{SUPABASE_URL}/rest/v1/{table}?email=eq.{encoded}"
+    headers = {
+        **SERVICE_HEADERS,
+        "Prefer": "return=representation",
+        "Cache-Control": "no-cache",
+    }
+    return requests.patch(url, headers=headers, json=data, timeout=20)
+
+
+def _parse_patch_rows(response) -> list:
     if response.status_code not in (200, 201):
-        return False, response.text or f"HTTP {response.status_code}"
+        return []
     try:
         body = response.json()
     except Exception:
-        return False, response.text or "invalid_response"
-    if not isinstance(body, list) or not body:
-        return False, "no_rows_updated"
-    return True, ""
+        return []
+    return body if isinstance(body, list) else []
+
+
+def supabase_patch_ok(table: str, user_id: str, data: dict, *, email: str = "") -> tuple[bool, str]:
+    writable, key_kind = _service_key_looks_writable()
+    if not writable:
+        return (
+            False,
+            f"SUPABASE_SERVICE_ROLE_KEY 无效（当前识别为 {key_kind}）。请在 Streamlit Cloud Secrets 填写 service_role / sb_secret_，不要用 anon / publishable。",
+        )
+
+    response = supabase_patch(table, user_id, data)
+    rows = _parse_patch_rows(response)
+    if not rows and email:
+        response = supabase_patch_by_email(table, email, data)
+        rows = _parse_patch_rows(response)
+
+    if response.status_code not in (200, 201):
+        return False, response.text or f"HTTP {response.status_code}"
+    if not rows:
+        return (
+            False,
+            "数据库未更新任何行（可能是 service_role 配置错误，或用户 id/email 不匹配）。",
+        )
+
+    # Read back to confirm persistence for the critical trial field.
+    if "free_trials_remaining" in data:
+        expected = int(data["free_trials_remaining"])
+        uid = rows[0].get("id") or user_id
+        verify = supabase_get(table, uid)
+        if verify.status_code in (200, 206):
+            try:
+                verify_rows = verify.json()
+            except Exception:
+                verify_rows = []
+            if isinstance(verify_rows, list) and verify_rows:
+                actual = verify_rows[0].get("free_trials_remaining")
+                try:
+                    if int(actual) != expected:
+                        return False, f"写后读回仍为 {actual}（期望 {expected}）"
+                except (TypeError, ValueError):
+                    return False, f"写后读回无效值: {actual}"
+        written = rows[0].get("free_trials_remaining")
+        return True, f"ok:{written}"
+    return True, "ok"
 
 
 DEFAULT_FREE_TRIALS = 30
@@ -2304,6 +2396,17 @@ def render_platform_enterprise_section(users):
 
 
 def render_admin_user_section(users, auth_users):
+    writable, key_kind = _service_key_looks_writable()
+    if not writable:
+        st.error(
+            f"无法写入 profiles：当前 SUPABASE_SERVICE_ROLE_KEY 识别为 **{key_kind}**。"
+            "请到 Streamlit Cloud → Settings → Secrets，改成 Supabase 的 **service_role**（或 sb_secret_）密钥，"
+            "不要使用 anon / publishable。"
+            if st.session_state.lang == "zh"
+            else f"Cannot write profiles: SUPABASE_SERVICE_ROLE_KEY looks like **{key_kind}**. "
+            "Use the Supabase service_role / sb_secret_ key in Streamlit Secrets, not anon/publishable."
+        )
+
     pro_users = [u for u in users if u.get("subscription_tier") == "pro"]
     enterprise_users = [u for u in users if u.get("subscription_tier") == "enterprise"]
     confirmed_count = sum(1 for u in users if auth_users.get(u.get("id"), {}).get("email_confirmed_at"))
@@ -2438,7 +2541,12 @@ def render_admin_user_section(users, auth_users):
                         ).isoformat()
                     else:
                         update_data["subscription_expires_at"] = None
-                    ok, detail = supabase_patch_ok("profiles", selected_user.get("id"), update_data)
+                    ok, detail = supabase_patch_ok(
+                        "profiles",
+                        selected_user.get("id"),
+                        update_data,
+                        email=selected_email,
+                    )
                     if ok:
                         st.session_state.pop("admin_new_trials", None)
                         st.session_state.pop("admin_new_tier", None)
@@ -2452,6 +2560,7 @@ def render_admin_user_section(users, auth_users):
                         "profiles",
                         selected_user.get("id"),
                         {"free_trials_remaining": DEFAULT_FREE_TRIALS},
+                        email=selected_email,
                     )
                     if ok:
                         st.session_state.pop("admin_new_trials", None)
@@ -2483,10 +2592,11 @@ def render_admin_user_section(users, auth_users):
             for user in users_resp.json():
                 # Only personal free users use trial counts
                 if user.get("subscription_tier") == "free" and not user.get("organization_id"):
-                    ok, _ = supabase_patch_ok(
+                    ok, detail = supabase_patch_ok(
                         "profiles",
                         user.get("id"),
                         {"free_trials_remaining": DEFAULT_FREE_TRIALS},
+                        email=user.get("email") or "",
                     )
                     if ok:
                         reset_count += 1
