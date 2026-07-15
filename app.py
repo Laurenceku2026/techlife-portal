@@ -126,7 +126,7 @@ def _kb_translators():
 def supabase_get(table: str, user_id: str = None, id_field: str = "id", *, limit: int = 1000):
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     if user_id:
-        url += f"?{id_field}=eq.{user_id}"
+        url += f"?{id_field}=eq.{user_id}&select=*"
     else:
         url += f"?select=*&order=email.asc&limit={int(limit)}"
     headers = {
@@ -134,18 +134,47 @@ def supabase_get(table: str, user_id: str = None, id_field: str = "id", *, limit
         "Prefer": "count=exact",
         "Range-Unit": "items",
         "Range": f"0-{max(int(limit) - 1, 0)}",
+        "Cache-Control": "no-cache",
     }
     response = requests.get(url, headers=headers, timeout=30)
     return response
 
+
 def supabase_patch(table: str, user_id: str, data: dict):
+    """Patch a row and return the updated representation (empty list if nothing updated)."""
     url = f"{SUPABASE_URL}/rest/v1/{table}?id=eq.{user_id}"
-    headers = {**SERVICE_HEADERS, "Prefer": "return=minimal"}
+    headers = {
+        **SERVICE_HEADERS,
+        "Prefer": "return=representation",
+        "Cache-Control": "no-cache",
+    }
     response = requests.patch(url, headers=headers, json=data, timeout=20)
     return response
 
 
+def supabase_patch_ok(table: str, user_id: str, data: dict) -> tuple[bool, str]:
+    response = supabase_patch(table, user_id, data)
+    if response.status_code not in (200, 201):
+        return False, response.text or f"HTTP {response.status_code}"
+    try:
+        body = response.json()
+    except Exception:
+        return False, response.text or "invalid_response"
+    if not isinstance(body, list) or not body:
+        return False, "no_rows_updated"
+    return True, ""
+
+
 DEFAULT_FREE_TRIALS = 30
+
+
+def _trials_display(value) -> int:
+    try:
+        if value is None:
+            return DEFAULT_FREE_TRIALS
+        return int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_FREE_TRIALS
 
 # ==================== 多语言配置 ====================
 TEXTS = {
@@ -2303,7 +2332,7 @@ def render_admin_user_section(users, auth_users):
                 t()["email_col"]: user.get("email"),
                 "邮箱确认": "✅" if ai.get("email_confirmed_at") else "❌",
                 t()["subscription_col"]: tier_label,
-                "剩余次数": user.get("free_trials_remaining", DEFAULT_FREE_TRIALS),
+                "剩余次数": _trials_display(user.get("free_trials_remaining")),
                 "注册时间": _safe_date_prefix(ai.get("created_at")),
                 "最后登录": _safe_date_prefix(ai.get("last_sign_in_at")),
                 "到期时间": _safe_date_prefix(user.get("subscription_expires_at")),
@@ -2380,9 +2409,7 @@ def render_admin_user_section(users, auth_users):
                     index=tier_index, key="admin_new_tier",
                 )
             with col_s2:
-                current_trials = selected_user.get("free_trials_remaining")
-                if current_trials is None:
-                    current_trials = DEFAULT_FREE_TRIALS
+                current_trials = _trials_display(selected_user.get("free_trials_remaining"))
                 new_trials = st.number_input(
                     t()["set_trials"], min_value=0, max_value=999,
                     value=int(current_trials), key="admin_new_trials",
@@ -2411,24 +2438,27 @@ def render_admin_user_section(users, auth_users):
                         ).isoformat()
                     else:
                         update_data["subscription_expires_at"] = None
-                    patch_resp = supabase_patch("profiles", selected_user.get("id"), update_data)
-                    if patch_resp.status_code in [200, 204]:
+                    ok, detail = supabase_patch_ok("profiles", selected_user.get("id"), update_data)
+                    if ok:
+                        st.session_state.pop("admin_new_trials", None)
+                        st.session_state.pop("admin_new_tier", None)
                         st.success(f"已更新 {selected_email}")
                         st.rerun()
                     else:
-                        st.error(f"更新失败: {patch_resp.text}")
+                        st.error(f"更新失败: {detail}")
             with col_b2:
                 if st.button(t()["reset_trials_btn"], use_container_width=True, key="admin_reset_trials_btn"):
-                    patch_resp = supabase_patch(
+                    ok, detail = supabase_patch_ok(
                         "profiles",
                         selected_user.get("id"),
                         {"free_trials_remaining": DEFAULT_FREE_TRIALS},
                     )
-                    if patch_resp.status_code in [200, 204]:
+                    if ok:
+                        st.session_state.pop("admin_new_trials", None)
                         st.success(t()["reset_trials_ok"].format(email=selected_email))
                         st.rerun()
                     else:
-                        st.error(f"更新失败: {patch_resp.text}")
+                        st.error(f"更新失败: {detail}")
             with col_b3:
                 if st.button("📧 发送密码重置邮件", use_container_width=True, key="admin_reset_pwd"):
                     try:
@@ -2448,17 +2478,17 @@ def render_admin_user_section(users, auth_users):
     st.markdown("---")
     if st.button(t()["reset_all_trials"], use_container_width=True, key="admin_reset_all"):
         users_resp = supabase_get("profiles", limit=5000)
-        if users_resp.status_code == 200:
+        if users_resp.status_code in (200, 206):
             reset_count = 0
             for user in users_resp.json():
                 # Only personal free users use trial counts
                 if user.get("subscription_tier") == "free" and not user.get("organization_id"):
-                    patch_resp = supabase_patch(
+                    ok, _ = supabase_patch_ok(
                         "profiles",
                         user.get("id"),
                         {"free_trials_remaining": DEFAULT_FREE_TRIALS},
                     )
-                    if patch_resp.status_code in [200, 204]:
+                    if ok:
                         reset_count += 1
             st.success(
                 f"已重置 {reset_count} 个免费用户次数为 {DEFAULT_FREE_TRIALS}"
@@ -2474,7 +2504,7 @@ def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     try:
         response = supabase_get("profiles", limit=5000)
-        raw_users = response.json() if response.status_code == 200 else []
+        raw_users = response.json() if response.status_code in (200, 206) else []
         users = raw_users if isinstance(raw_users, list) else []
 
         auth_users = {}
