@@ -209,11 +209,23 @@ def supabase_get(table: str, user_id: str = None, id_field: str = "id", *, limit
 
 def supabase_get_by_email(table: str, email: str):
     encoded = quote(str(email or "").strip(), safe="")
-    url = f"{SUPABASE_URL}/rest/v1/{table}?email=eq.{encoded}&select=*"
+    # ilike = case-insensitive match (avoid missing rows with different casing)
+    url = f"{SUPABASE_URL}/rest/v1/{table}?email=ilike.{encoded}&select=*"
     if table == "profiles":
         url += _profiles_query_extra()
     headers = {**SERVICE_HEADERS, "Cache-Control": "no-cache"}
     return requests.get(url, headers=headers, timeout=20)
+
+
+def supabase_list_profiles_by_email(email: str) -> list:
+    resp = supabase_get_by_email("profiles", email)
+    if resp.status_code not in (200, 206):
+        return []
+    try:
+        rows = resp.json()
+    except Exception:
+        return []
+    return rows if isinstance(rows, list) else []
 
 
 def supabase_patch(table: str, user_id: str, data: dict):
@@ -234,7 +246,7 @@ def supabase_patch(table: str, user_id: str, data: dict):
 
 def supabase_patch_by_email(table: str, email: str, data: dict):
     encoded = quote(str(email or "").strip(), safe="")
-    url = f"{SUPABASE_URL}/rest/v1/{table}?email=eq.{encoded}"
+    url = f"{SUPABASE_URL}/rest/v1/{table}?email=ilike.{encoded}"
     if table == "profiles":
         url += _profiles_query_extra()
         if APP_ID and "app_id" not in data:
@@ -278,18 +290,103 @@ def _read_profile_trials(user_id: str = "", email: str = "") -> tuple[Optional[i
             if isinstance(rows, list) and rows:
                 return rows[0].get("free_trials_remaining"), "id"
     if email:
-        resp = supabase_get_by_email("profiles", email)
-        if resp.status_code in (200, 206):
-            try:
-                rows = resp.json()
-            except Exception:
-                rows = []
-            if isinstance(rows, list) and rows:
-                return rows[0].get("free_trials_remaining"), "email"
+        rows = supabase_list_profiles_by_email(email)
+        if rows:
+            # If duplicates exist, report the minimum so UI doesn't hide a stuck-at-0 row.
+            values = []
+            for row in rows:
+                try:
+                    values.append(int(row.get("free_trials_remaining")))
+                except (TypeError, ValueError):
+                    continue
+            if values:
+                return min(values), f"email({len(rows)} rows)"
     return None, "not_found"
 
 
+def set_profile_free_trials(user_id: str, email: str, trials: int) -> tuple[bool, str]:
+    """Update free_trials_remaining for one profile id AND every duplicate email row."""
+    writable, key_kind = _service_key_looks_writable()
+    if not writable:
+        return (
+            False,
+            f"写入密钥无效（{key_kind}）。请检查 SUPABASE_STOCK_SECRET_KEY / service_role。",
+        )
+
+    target = int(trials)
+    payload = {"free_trials_remaining": target}
+    attempts = []
+
+    # 1) Always patch by selected id.
+    if user_id:
+        resp = supabase_patch("profiles", user_id, payload)
+        rows = _parse_patch_rows(resp)
+        attempts.append(f"id:{str(user_id)[:8]}→HTTP {resp.status_code}, rows={len(rows)}")
+
+    # 2) Patch every row that matches email (case-insensitive), covering duplicates.
+    email_rows = supabase_list_profiles_by_email(email) if email else []
+    if len(email_rows) > 1:
+        attempts.append(f"duplicate_email_rows={len(email_rows)}")
+    for row in email_rows:
+        rid = row.get("id")
+        if not rid or str(rid) == str(user_id):
+            continue
+        resp = supabase_patch("profiles", rid, payload)
+        rows = _parse_patch_rows(resp)
+        attempts.append(f"dup:{str(rid)[:8]}→HTTP {resp.status_code}, rows={len(rows)}")
+
+    # 3) Bulk email patch as safety net.
+    if email:
+        resp = supabase_patch_by_email("profiles", email, payload)
+        rows = _parse_patch_rows(resp)
+        attempts.append(f"email_ilike→HTTP {resp.status_code}, rows={len(rows)}")
+
+    # 4) Optional RPC.
+    if email:
+        rpc_resp = supabase_rpc(
+            "admin_set_free_trials",
+            {
+                "p_email": email.strip(),
+                "p_trials": target,
+                **({"p_app_id": APP_ID} if APP_ID else {}),
+            },
+        )
+        attempts.append(f"rpc→HTTP {rpc_resp.status_code}, body={(rpc_resp.text or '')[:120]}")
+
+    # Verify: selected id must be target; no email duplicate may remain below target.
+    actual_id, _ = _read_profile_trials(user_id=str(user_id or ""), email="")
+    try:
+        actual_id_int = int(actual_id) if actual_id is not None else None
+    except (TypeError, ValueError):
+        actual_id_int = None
+
+    remaining_rows = supabase_list_profiles_by_email(email) if email else []
+    stuck = []
+    for row in remaining_rows:
+        try:
+            val = int(row.get("free_trials_remaining"))
+        except (TypeError, ValueError):
+            val = None
+        if val != target:
+            stuck.append(f"{str(row.get('id') or '')[:8]}={val}")
+
+    if actual_id_int != target:
+        return (
+            False,
+            f"选中用户写后仍为 {actual_id_int}（期望 {target}）。" + " | " + "; ".join(attempts),
+        )
+    if stuck:
+        return (
+            False,
+            f"同邮箱仍有未更新行: {', '.join(stuck)}。" + " | " + "; ".join(attempts),
+        )
+    return True, f"ok:{target}, rows={max(len(remaining_rows), 1)}"
+
+
 def supabase_patch_ok(table: str, user_id: str, data: dict, *, email: str = "") -> tuple[bool, str]:
+    if table == "profiles" and "free_trials_remaining" in data and len(data) == 1:
+        return set_profile_free_trials(user_id, email, int(data["free_trials_remaining"]))
+
     writable, key_kind = _service_key_looks_writable()
     if not writable:
         return (
@@ -307,49 +404,16 @@ def supabase_patch_ok(table: str, user_id: str, data: dict, *, email: str = "") 
         rows = _parse_patch_rows(response)
         attempts.append(f"email→HTTP {response.status_code}, rows={len(rows)}")
 
-    # Optional RPC fallback if SQL migration was applied.
-    if not rows and email and "free_trials_remaining" in data:
-        rpc_resp = supabase_rpc(
-            "admin_set_free_trials",
-            {
-                "p_email": email.strip(),
-                "p_trials": int(data["free_trials_remaining"]),
-                **({"p_app_id": APP_ID} if APP_ID else {}),
-            },
-        )
-        attempts.append(f"rpc→HTTP {rpc_resp.status_code}, body={(rpc_resp.text or '')[:180]}")
-        if rpc_resp.status_code in (200, 201):
-            try:
-                rpc_body = rpc_resp.json()
-            except Exception:
-                rpc_body = None
-            # RPC returns updated row count (int) or list.
-            if rpc_body is True or rpc_body == 1 or rpc_body == [1] or (
-                isinstance(rpc_body, int) and rpc_body > 0
-            ):
-                rows = [{"free_trials_remaining": int(data["free_trials_remaining"]), "id": user_id}]
-
     if response.status_code not in (200, 201) and not rows:
         return False, (response.text or f"HTTP {response.status_code}") + " | " + "; ".join(attempts)
     if not rows:
         return (
             False,
-            "数据库未更新任何行。请检查 Secrets 的 service_role，或在 Supabase 执行 supabase_migration_admin_set_trials.sql。"
-            + " | " + "; ".join(attempts),
+            "数据库未更新任何行。" + " | " + "; ".join(attempts),
         )
 
     if "free_trials_remaining" in data:
-        expected = int(data["free_trials_remaining"])
-        actual, source = _read_profile_trials(user_id=str(user_id or ""), email=email)
-        if actual is None:
-            return False, f"写后无法读回 profiles（{source}）。" + " | " + "; ".join(attempts)
-        try:
-            actual_int = int(actual)
-        except (TypeError, ValueError):
-            return False, f"写后读回无效值: {actual}"
-        if actual_int != expected:
-            return False, f"写后读回仍为 {actual_int}（期望 {expected}，via {source}）"
-        return True, f"ok:{actual_int}"
+        return set_profile_free_trials(user_id, email, int(data["free_trials_remaining"]))
     return True, "ok"
 
 
@@ -2555,6 +2619,7 @@ def render_admin_user_section(users, auth_users):
                 tier_label = "🔒 Free"
             user_data.append({
                 t()["email_col"]: user.get("email"),
+                "ID": str(user.get("id") or "")[:8],
                 "邮箱确认": "✅" if ai.get("email_confirmed_at") else "❌",
                 t()["subscription_col"]: tier_label,
                 "剩余次数": _trials_display(user.get("free_trials_remaining")),
@@ -2563,6 +2628,20 @@ def render_admin_user_section(users, auth_users):
                 "到期时间": _safe_date_prefix(user.get("subscription_expires_at")),
             })
         st.dataframe(user_data, use_container_width=True, height=400)
+        # Warn about duplicate emails — a common cause of "reset ok but still 0".
+        email_counts = {}
+        for user in users:
+            em = str(user.get("email") or "").strip().lower()
+            if not em:
+                continue
+            email_counts[em] = email_counts.get(em, 0) + 1
+        dupes = sorted([em for em, n in email_counts.items() if n > 1])
+        if dupes:
+            st.warning(
+                "发现重复邮箱 profiles（会导致重置一条仍显示 0）： "
+                + ", ".join(dupes[:8])
+                + (" …" if len(dupes) > 8 else "")
+            )
     else:
         st.info("暂无用户数据")
 
@@ -2623,10 +2702,29 @@ def render_admin_user_section(users, auth_users):
                 email=selected_email,
             )
             st.info(
-                f"数据库当前剩余次数: **{live_trials if live_trials is not None else '读取失败'}**（via {live_source}）"
+                f"数据库当前剩余次数: **{live_trials if live_trials is not None else '读取失败'}**（via {live_source}）｜ id=`{str((selected_user or {}).get('id') or '')[:8]}`"
                 if st.session_state.lang == "zh"
-                else f"DB trials now: **{live_trials if live_trials is not None else 'read failed'}** (via {live_source})"
+                else f"DB trials now: **{live_trials if live_trials is not None else 'read failed'}** (via {live_source}) | id=`{str((selected_user or {}).get('id') or '')[:8]}`"
             )
+            same_email_rows = supabase_list_profiles_by_email(selected_email) if selected_email else []
+            if len(same_email_rows) > 1:
+                st.error(
+                    f"该邮箱有 {len(same_email_rows)} 条 profiles 记录。重置会更新全部；请在 Supabase 清理重复行。"
+                    if st.session_state.lang == "zh"
+                    else f"This email has {len(same_email_rows)} profile rows. Reset updates all; clean duplicates in Supabase."
+                )
+                st.json(
+                    [
+                        {
+                            "id": str(r.get("id") or "")[:8],
+                            "email": r.get("email"),
+                            "free_trials_remaining": r.get("free_trials_remaining"),
+                            "subscription_tier": r.get("subscription_tier"),
+                            "organization_id": str(r.get("organization_id") or "")[:8] or None,
+                        }
+                        for r in same_email_rows
+                    ]
+                )
 
         if selected_user:
             selected_user_id = str(selected_user.get("id"))
@@ -2698,7 +2796,7 @@ def render_admin_user_section(users, auth_users):
                         email=selected_email,
                     )
                     if ok:
-                        st.session_state.pop("admin_new_trials", None)
+                        st.session_state.admin_new_trials = DEFAULT_FREE_TRIALS
                         st.session_state._admin_flash = (
                             "ok",
                             t()["reset_trials_ok"].format(email=selected_email) + f"（{detail}）",
