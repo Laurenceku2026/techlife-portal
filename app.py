@@ -123,17 +123,29 @@ def _kb_translators():
     )
 
 
-def supabase_get(table: str, user_id: str = None, id_field: str = "id"):
+def supabase_get(table: str, user_id: str = None, id_field: str = "id", *, limit: int = 1000):
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     if user_id:
         url += f"?{id_field}=eq.{user_id}"
-    response = requests.get(url, headers=SERVICE_HEADERS)
+    else:
+        url += f"?select=*&order=email.asc&limit={int(limit)}"
+    headers = {
+        **SERVICE_HEADERS,
+        "Prefer": "count=exact",
+        "Range-Unit": "items",
+        "Range": f"0-{max(int(limit) - 1, 0)}",
+    }
+    response = requests.get(url, headers=headers, timeout=30)
     return response
 
 def supabase_patch(table: str, user_id: str, data: dict):
     url = f"{SUPABASE_URL}/rest/v1/{table}?id=eq.{user_id}"
-    response = requests.patch(url, headers=SERVICE_HEADERS, json=data)
+    headers = {**SERVICE_HEADERS, "Prefer": "return=minimal"}
+    response = requests.patch(url, headers=headers, json=data, timeout=20)
     return response
+
+
+DEFAULT_FREE_TRIALS = 30
 
 # ==================== 多语言配置 ====================
 TEXTS = {
@@ -195,7 +207,10 @@ TEXTS = {
         "subscription_col": "订阅",
         "trials_left": "剩余次数",
         "total_used": "总使用次数",
-        "reset_all_trials": "重置所有用户免费次数",
+        "reset_trials_btn": "重置次数为 30",
+        "reset_trials_ok": "已重置 {email} 的免费次数为 30",
+        "search_user_email": "按邮箱搜索用户",
+        "reset_all_trials": "重置所有免费用户次数",
         "batch_ops": "批量操作",
         "launch": "在新窗口打开",
         "login_failed": "登录失败",
@@ -386,7 +401,10 @@ Let AI be your Chief Product Development Engineer.
         "subscription_col": "Subscription",
         "trials_left": "Trials Left",
         "total_used": "Total Used",
-        "reset_all_trials": "Reset All Users Trials",
+        "reset_trials_btn": "Reset trials to 30",
+        "reset_trials_ok": "Reset trials for {email} to 30",
+        "search_user_email": "Search user by email",
+        "reset_all_trials": "Reset All Free Users Trials",
         "batch_ops": "Batch Operations",
         "launch": "Open in New Tab",
         "login_failed": "Login failed",
@@ -668,8 +686,10 @@ PLATFORM_ADMIN_WIDGET_KEYS = (
     "admin_new_trials",
     "admin_months",
     "admin_update_btn",
+    "admin_reset_trials_btn",
     "admin_reset_pwd",
     "admin_reset_all",
+    "admin_user_search",
     "admin_exit",
     "admin_username",
     "admin_password",
@@ -2280,7 +2300,7 @@ def render_admin_user_section(users, auth_users):
                 t()["email_col"]: user.get("email"),
                 "邮箱确认": "✅" if ai.get("email_confirmed_at") else "❌",
                 t()["subscription_col"]: tier_label,
-                "剩余次数": user.get("free_trials_remaining", 30),
+                "剩余次数": user.get("free_trials_remaining", DEFAULT_FREE_TRIALS),
                 "注册时间": _safe_date_prefix(ai.get("created_at")),
                 "最后登录": _safe_date_prefix(ai.get("last_sign_in_at")),
                 "到期时间": _safe_date_prefix(user.get("subscription_expires_at")),
@@ -2293,12 +2313,31 @@ def render_admin_user_section(users, auth_users):
     st.subheader(t()["subscription_mgmt"])
 
     if users:
-        user_options = [f"{u.get('email')} ({u.get('subscription_tier')})" for u in users]
+        search_email = st.text_input(
+            t()["search_user_email"],
+            key="admin_user_search",
+            placeholder="mabelwong926@gmail.com",
+        ).strip().lower()
+        filtered_users = users
+        if search_email:
+            filtered_users = [
+                u for u in users
+                if search_email in str(u.get("email") or "").lower()
+            ]
+            if not filtered_users:
+                st.warning(t()["user_not_found"])
+
+        user_options = [f"{u.get('email')} ({u.get('subscription_tier')})" for u in filtered_users]
         if user_options and st.session_state.get("admin_select_user") not in user_options:
             st.session_state.pop("admin_select_user", None)
-        selected = st.selectbox(t()["select_user"], user_options, key="admin_select_user")
-        selected_email = selected.split(" (")[0]
-        selected_user = next((u for u in users if u.get("email") == selected_email), None)
+        if not user_options:
+            st.info("暂无可选用户" if st.session_state.lang == "zh" else "No users to select")
+            selected_user = None
+            selected_email = None
+        else:
+            selected = st.selectbox(t()["select_user"], user_options, key="admin_select_user")
+            selected_email = selected.split(" (")[0]
+            selected_user = next((u for u in filtered_users if u.get("email") == selected_email), None)
 
         if selected_user:
             if st.session_state.get("_admin_tier_user") != selected_email:
@@ -2315,9 +2354,12 @@ def render_admin_user_section(users, auth_users):
                     index=tier_index, key="admin_new_tier",
                 )
             with col_s2:
+                current_trials = selected_user.get("free_trials_remaining")
+                if current_trials is None:
+                    current_trials = DEFAULT_FREE_TRIALS
                 new_trials = st.number_input(
-                    t()["set_trials"], min_value=0, max_value=100,
-                    value=selected_user.get("free_trials_remaining", 30), key="admin_new_trials",
+                    t()["set_trials"], min_value=0, max_value=999,
+                    value=int(current_trials), key="admin_new_trials",
                 )
             with col_s3:
                 admin_months = st.number_input(
@@ -2326,10 +2368,17 @@ def render_admin_user_section(users, auth_users):
                     disabled=new_tier != "pro",
                 )
 
-            col_b1, col_b2 = st.columns(2)
+            if new_tier in ("pro", "enterprise"):
+                st.caption(
+                    "提示：Pro / Enterprise 用户不消耗免费次数；若要按次数计费，请改回 free。"
+                    if st.session_state.lang == "zh"
+                    else "Note: Pro / Enterprise users do not consume free trials. Switch to free to use trial counts."
+                )
+
+            col_b1, col_b2, col_b3 = st.columns(3)
             with col_b1:
                 if st.button(t()["update_btn"], use_container_width=True, key="admin_update_btn", type="primary"):
-                    update_data = {"subscription_tier": new_tier, "free_trials_remaining": new_trials}
+                    update_data = {"subscription_tier": new_tier, "free_trials_remaining": int(new_trials)}
                     if new_tier == "pro":
                         update_data["subscription_expires_at"] = (
                             datetime.now() + timedelta(days=30 * int(admin_months))
@@ -2343,6 +2392,18 @@ def render_admin_user_section(users, auth_users):
                     else:
                         st.error(f"更新失败: {patch_resp.text}")
             with col_b2:
+                if st.button(t()["reset_trials_btn"], use_container_width=True, key="admin_reset_trials_btn"):
+                    patch_resp = supabase_patch(
+                        "profiles",
+                        selected_user.get("id"),
+                        {"free_trials_remaining": DEFAULT_FREE_TRIALS},
+                    )
+                    if patch_resp.status_code in [200, 204]:
+                        st.success(t()["reset_trials_ok"].format(email=selected_email))
+                        st.rerun()
+                    else:
+                        st.error(f"更新失败: {patch_resp.text}")
+            with col_b3:
                 if st.button("📧 发送密码重置邮件", use_container_width=True, key="admin_reset_pwd"):
                     try:
                         reset_data = {"email": selected_email}
@@ -2360,19 +2421,33 @@ def render_admin_user_section(users, auth_users):
 
     st.markdown("---")
     if st.button(t()["reset_all_trials"], use_container_width=True, key="admin_reset_all"):
-        users_resp = supabase_get("profiles")
+        users_resp = supabase_get("profiles", limit=5000)
         if users_resp.status_code == 200:
+            reset_count = 0
             for user in users_resp.json():
-                if user.get("subscription_tier") == "free":
-                    supabase_patch("profiles", user.get("id"), {"free_trials_remaining": 30})
-            st.success("所有免费用户次数已重置为 30 次")
+                # Only personal free users use trial counts
+                if user.get("subscription_tier") == "free" and not user.get("organization_id"):
+                    patch_resp = supabase_patch(
+                        "profiles",
+                        user.get("id"),
+                        {"free_trials_remaining": DEFAULT_FREE_TRIALS},
+                    )
+                    if patch_resp.status_code in [200, 204]:
+                        reset_count += 1
+            st.success(
+                f"已重置 {reset_count} 个免费用户次数为 {DEFAULT_FREE_TRIALS}"
+                if st.session_state.lang == "zh"
+                else f"Reset trials to {DEFAULT_FREE_TRIALS} for {reset_count} free users"
+            )
             st.rerun()
+        else:
+            st.error(f"读取用户失败: {users_resp.text}")
 
 
 def render_admin_panel():
     st.markdown(f"## ⚙️ {t()['admin_panel']}")
     try:
-        response = supabase_get("profiles")
+        response = supabase_get("profiles", limit=5000)
         raw_users = response.json() if response.status_code == 200 else []
         users = raw_users if isinstance(raw_users, list) else []
 
