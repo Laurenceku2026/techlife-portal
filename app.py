@@ -111,17 +111,33 @@ SUPABASE_ANON_KEY = (
     _get_secret("SUPABASE_STOCK_ANON_KEY", "SUPABASE_ANON_KEY")
     or SUPABASE_SERVICE_ROLE_KEY
 )
+# Independent schema per app in the same Supabase project (PostgREST Accept/Content-Profile).
+SUPABASE_DB_SCHEMA = (
+    _get_secret("SUPABASE_DB_SCHEMA", "SUPABASE_STOCK_SCHEMA", "APP_SCHEMA") or "public"
+).strip() or "public"
+# Optional row-level app filter inside the schema.
+APP_ID = (_get_secret("APP_ID", "SUPABASE_APP_ID", "SUPABASE_STOCK_APP_ID") or "").strip()
 
 SERVICE_HEADERS = {
     "apikey": SUPABASE_SERVICE_ROLE_KEY,
     "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
     "Content-Type": "application/json",
 }
+if SUPABASE_DB_SCHEMA and SUPABASE_DB_SCHEMA != "public":
+    SERVICE_HEADERS["Accept-Profile"] = SUPABASE_DB_SCHEMA
+    SERVICE_HEADERS["Content-Profile"] = SUPABASE_DB_SCHEMA
 
 AUTH_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
     "Content-Type": "application/json",
 }
+
+
+def _profiles_query_extra() -> str:
+    """Optional app_id filter for multi-app rows inside one schema."""
+    if not APP_ID:
+        return ""
+    return f"&app_id=eq.{quote(APP_ID, safe='')}"
 
 
 def _jwt_claim_role(token: str) -> str:
@@ -176,8 +192,12 @@ def supabase_get(table: str, user_id: str = None, id_field: str = "id", *, limit
     headers = {**SERVICE_HEADERS, "Cache-Control": "no-cache"}
     if user_id:
         url += f"?{id_field}=eq.{quote(str(user_id), safe='')}&select=*"
+        if table == "profiles":
+            url += _profiles_query_extra()
     else:
         url += f"?select=*&order=email.asc&limit={int(limit)}"
+        if table == "profiles":
+            url += _profiles_query_extra()
         headers.update({
             "Prefer": "count=exact",
             "Range-Unit": "items",
@@ -190,6 +210,8 @@ def supabase_get(table: str, user_id: str = None, id_field: str = "id", *, limit
 def supabase_get_by_email(table: str, email: str):
     encoded = quote(str(email or "").strip(), safe="")
     url = f"{SUPABASE_URL}/rest/v1/{table}?email=eq.{encoded}&select=*"
+    if table == "profiles":
+        url += _profiles_query_extra()
     headers = {**SERVICE_HEADERS, "Cache-Control": "no-cache"}
     return requests.get(url, headers=headers, timeout=20)
 
@@ -197,6 +219,10 @@ def supabase_get_by_email(table: str, email: str):
 def supabase_patch(table: str, user_id: str, data: dict):
     """Patch a row and return the updated representation (empty list if nothing updated)."""
     url = f"{SUPABASE_URL}/rest/v1/{table}?id=eq.{quote(str(user_id), safe='')}"
+    if table == "profiles":
+        url += _profiles_query_extra()
+        if APP_ID and "app_id" not in data:
+            data = {**data, "app_id": APP_ID}
     headers = {
         **SERVICE_HEADERS,
         "Prefer": "return=representation",
@@ -209,6 +235,10 @@ def supabase_patch(table: str, user_id: str, data: dict):
 def supabase_patch_by_email(table: str, email: str, data: dict):
     encoded = quote(str(email or "").strip(), safe="")
     url = f"{SUPABASE_URL}/rest/v1/{table}?email=eq.{encoded}"
+    if table == "profiles":
+        url += _profiles_query_extra()
+        if APP_ID and "app_id" not in data:
+            data = {**data, "app_id": APP_ID}
     headers = {
         **SERVICE_HEADERS,
         "Prefer": "return=representation",
@@ -281,7 +311,11 @@ def supabase_patch_ok(table: str, user_id: str, data: dict, *, email: str = "") 
     if not rows and email and "free_trials_remaining" in data:
         rpc_resp = supabase_rpc(
             "admin_set_free_trials",
-            {"p_email": email.strip(), "p_trials": int(data["free_trials_remaining"])},
+            {
+                "p_email": email.strip(),
+                "p_trials": int(data["free_trials_remaining"]),
+                **({"p_app_id": APP_ID} if APP_ID else {}),
+            },
         )
         attempts.append(f"rpc→HTTP {rpc_resp.status_code}, body={(rpc_resp.text or '')[:180]}")
         if rpc_resp.status_code in (200, 201):
@@ -2469,10 +2503,22 @@ def render_admin_user_section(users, auth_users):
     writable, key_kind = _service_key_looks_writable()
     project_host = (SUPABASE_URL or "").replace("https://", "").replace("http://", "").split("/")[0]
     st.caption(
-        f"当前数据库: `{project_host}` ｜ 写入密钥: {'可用' if writable else '不可用'}（{key_kind}）"
+        f"当前数据库: `{project_host}` ｜ schema: `{SUPABASE_DB_SCHEMA}`"
+        + (f" ｜ app_id: `{APP_ID}`" if APP_ID else "")
+        + f" ｜ 写入密钥: {'可用' if writable else '不可用'}（{key_kind}）"
         if st.session_state.lang == "zh"
-        else f"DB: `{project_host}` | Write key: {'ok' if writable else 'blocked'} ({key_kind})"
+        else f"DB: `{project_host}` | schema: `{SUPABASE_DB_SCHEMA}`"
+        + (f" | app_id: `{APP_ID}`" if APP_ID else "")
+        + f" | Write key: {'ok' if writable else 'blocked'} ({key_kind})"
     )
+    if SUPABASE_DB_SCHEMA == "public":
+        st.warning(
+            "当前写入 schema=`public`。若本项目用户在独立 schema（多 app 隔离），请在 Secrets 增加 "
+            "`SUPABASE_DB_SCHEMA=\"你的schema名\"`，必要时再加 `APP_ID=\"...\"`，否则会改到错误的表。"
+            if st.session_state.lang == "zh"
+            else "Writes currently use schema=`public`. If this app uses an isolated schema, set "
+            "`SUPABASE_DB_SCHEMA` (and optional `APP_ID`) in Secrets."
+        )
     if not writable:
         st.error(
             f"无法写入 profiles：当前 SUPABASE_SERVICE_ROLE_KEY 识别为 **{key_kind}**。"

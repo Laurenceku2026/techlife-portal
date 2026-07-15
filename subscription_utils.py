@@ -37,6 +37,13 @@ def _get_jwt_secret() -> Optional[str]:
     return _get_secret("JWT_SECRET_KEY", "connections.supabase.JWT_SECRET_KEY")
 
 
+def _get_db_schema() -> str:
+    return (
+        _get_secret("SUPABASE_DB_SCHEMA", "SUPABASE_STOCK_SCHEMA", "APP_SCHEMA", default="public")
+        or "public"
+    ).strip() or "public"
+
+
 @st.cache_resource
 def get_supabase_admin_client():
     """管理员客户端（service_role key，绕过 RLS）"""
@@ -45,7 +52,14 @@ def get_supabase_admin_client():
         key = _get_service_role_key()
         if not url or not key:
             raise ValueError("Missing Supabase admin credentials")
-        return create_client(url, key)
+        client = create_client(url, key)
+        schema = _get_db_schema()
+        if schema and schema != "public":
+            try:
+                return client.schema(schema)
+            except Exception:
+                return client
+        return client
     except Exception as e:
         st.error(f"管理员客户端初始化失败: {e}")
         return None
