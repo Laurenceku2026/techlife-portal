@@ -210,6 +210,7 @@ TEXTS = {
         "reset_trials_btn": "重置次数为 30",
         "reset_trials_ok": "已重置 {email} 的免费次数为 30",
         "search_user_email": "按邮箱搜索用户",
+        "current_user": "当前用户",
         "reset_all_trials": "重置所有免费用户次数",
         "batch_ops": "批量操作",
         "launch": "在新窗口打开",
@@ -404,6 +405,7 @@ Let AI be your Chief Product Development Engineer.
         "reset_trials_btn": "Reset trials to 30",
         "reset_trials_ok": "Reset trials for {email} to 30",
         "search_user_email": "Search user by email",
+        "current_user": "Current user",
         "reset_all_trials": "Reset All Free Users Trials",
         "batch_ops": "Batch Operations",
         "launch": "Open in New Tab",
@@ -682,6 +684,7 @@ PLATFORM_ADMIN_WIDGET_KEYS = (
     "platform_kb_delete_select",
     "platform_kb_delete_btn",
     "admin_select_user",
+    "admin_select_user_id",
     "admin_new_tier",
     "admin_new_trials",
     "admin_months",
@@ -2327,23 +2330,46 @@ def render_admin_user_section(users, auth_users):
             if not filtered_users:
                 st.warning(t()["user_not_found"])
 
-        user_options = [f"{u.get('email')} ({u.get('subscription_tier')})" for u in filtered_users]
-        if user_options and st.session_state.get("admin_select_user") not in user_options:
-            st.session_state.pop("admin_select_user", None)
-        if not user_options:
+        user_lookup = {
+            str(u.get("id")): u
+            for u in filtered_users
+            if u.get("id")
+        }
+        user_ids = list(user_lookup.keys())
+
+        # Drop stale selectbox state that belongs to an older options list / key.
+        st.session_state.pop("admin_select_user", None)
+        if st.session_state.get("admin_select_user_id") not in user_ids:
+            st.session_state.pop("admin_select_user_id", None)
+
+        if not user_ids:
             st.info("暂无可选用户" if st.session_state.lang == "zh" else "No users to select")
             selected_user = None
             selected_email = None
         else:
-            selected = st.selectbox(t()["select_user"], user_options, key="admin_select_user")
-            selected_email = selected.split(" (")[0]
-            selected_user = next((u for u in filtered_users if u.get("email") == selected_email), None)
+            def _admin_user_label(uid: str) -> str:
+                item = user_lookup.get(uid, {})
+                email = (item.get("email") or uid).strip()
+                tier = item.get("subscription_tier") or "free"
+                return f"{email} ({tier})"
+
+            selected_user_id = st.selectbox(
+                t()["select_user"],
+                user_ids,
+                format_func=_admin_user_label,
+                key="admin_select_user_id",
+            )
+            selected_user = user_lookup.get(selected_user_id)
+            selected_email = (selected_user or {}).get("email") or ""
+            st.markdown(f"**{t()['current_user']}:** `{selected_email}`")
 
         if selected_user:
-            if st.session_state.get("_admin_tier_user") != selected_email:
-                st.session_state._admin_tier_user = selected_email
+            selected_user_id = str(selected_user.get("id"))
+            if st.session_state.get("_admin_tier_user") != selected_user_id:
+                st.session_state._admin_tier_user = selected_user_id
                 st.session_state.pop("admin_new_tier", None)
                 st.session_state.pop("admin_new_trials", None)
+                st.session_state.pop("admin_months", None)
             col_s1, col_s2, col_s3 = st.columns(3)
             with col_s1:
                 tier_choices = ["free", "pro", "enterprise"]
