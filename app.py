@@ -16,6 +16,8 @@ from portal_auth import build_app_launch_url
 from portal_branding import apply_streamlit_head_patch, inject_mobile_home_screen_meta, local_page_icon, render_add_to_home_screen_help
 from portal_enterprise_ui import enterprise_brand_markup
 from kb_translate import bilingualize_kb_content, make_kb_translators
+from email_smtp import smtp_configured
+from password_reset import apply_password_reset_with_token, send_password_reset_email
 from enterprise_utils import (
     KNOWLEDGE_CATEGORIES,
     add_org_member,
@@ -117,6 +119,60 @@ SERVICE_HEADERS = {
     "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
     "Content-Type": "application/json",
 }
+
+# Gmail SMTP（忘记密码发信）：需在 Secrets 配置 SMTP_PASSWORD=应用专用密码
+SMTP_HOST = _get_secret("SMTP_HOST") or "smtp.gmail.com"
+SMTP_PORT = int(_get_secret("SMTP_PORT") or "587")
+SMTP_USER = _get_secret("SMTP_USER") or "Techlife2027@gmail.com"
+SMTP_PASSWORD = (
+    (_get_secret("SMTP_PASSWORD") or "")
+    .replace(" ", "")
+    .replace("\u00a0", "")
+)
+SMTP_FROM = _get_secret("SMTP_FROM") or SMTP_USER or "Techlife2027@gmail.com"
+SMTP_USE_TLS = (_get_secret("SMTP_USE_TLS") or "1") not in ("0", "false", "False")
+APP_BASE_URL = (
+    _get_secret("APP_BASE_URL")
+    or "https://techlife-app.streamlit.app"
+)
+JWT_SECRET_KEY = _get_secret("JWT_SECRET_KEY")
+
+
+def _resolve_app_base_url() -> str:
+    """密码重置邮件链接用的 App 根地址。优先 Secrets，其次从请求 Host 推断。"""
+    configured = (APP_BASE_URL or "").strip().split("?")[0].rstrip("/")
+    if configured and "share.streamlit.io" not in configured:
+        return configured
+    try:
+        headers = st.context.headers
+        host = (headers.get("Host") or headers.get("host") or "").strip()
+        if host and "share.streamlit.io" not in host:
+            proto = (
+                headers.get("X-Forwarded-Proto")
+                or headers.get("x-forwarded-proto")
+                or "https"
+            )
+            return f"{proto}://{host}".rstrip("/")
+    except Exception:
+        pass
+    return configured if configured and "share.streamlit.io" not in configured else ""
+
+
+def _smtp_settings() -> dict:
+    return {
+        "host": SMTP_HOST,
+        "port": SMTP_PORT,
+        "user": SMTP_USER,
+        "password": SMTP_PASSWORD,
+        "mail_from": SMTP_FROM,
+        "use_tls": SMTP_USE_TLS,
+    }
+
+
+def _pwd_reset_cooldown_map() -> dict:
+    if "_pwd_reset_sent_at" not in st.session_state:
+        st.session_state._pwd_reset_sent_at = {}
+    return st.session_state._pwd_reset_sent_at
 
 AUTH_HEADERS = {
     "apikey": SUPABASE_ANON_KEY,
@@ -423,6 +479,26 @@ TEXTS = {
         "login_btn": "登录",
         "register_btn": "注册新账号",
         "forgot_password": "忘记密码?",
+        "forgot_password_hint_email": "输入注册邮箱，我们将发送密码重置链接（1 小时内有效）。",
+        "forgot_password_hint_smtp_missing": "邮件服务未配置。请联系管理员，或在 Secrets 中配置 SMTP_PASSWORD。",
+        "forgot_password_email": "注册邮箱",
+        "forgot_password_confirm": "我确认要重置该邮箱的密码",
+        "forgot_password_submit_email": "发送重置邮件",
+        "forgot_password_need_email": "请输入有效邮箱",
+        "forgot_password_need_confirm": "请勾选确认后再提交",
+        "forgot_password_fail": "发送失败，请稍后重试或联系管理员",
+        "forgot_password_cooldown": "请求过于频繁，请约 2 分钟后再试",
+        "forgot_password_no_base_url": "缺少 APP_BASE_URL，无法生成重置链接",
+        "forgot_password_email_sent": "若该邮箱已注册，重置链接已发送，请查收邮件（含垃圾箱）。",
+        "reset_password_heading": "设置新密码",
+        "reset_password_caption": "正在为 {email} 设置新密码",
+        "reset_password_submit": "确认重置",
+        "reset_password_ok": "密码已更新",
+        "reset_password_ok_hint": "请返回登录页使用新密码登录",
+        "reset_password_expired": "重置链接已过期，请重新申请",
+        "reset_password_fail": "重置失败，链接无效或已使用",
+        "password_too_short": "密码长度至少 6 位",
+        "password_mismatch": "两次输入的密码不一致",
         "register_title": "注册新账号",
         "confirm_password": "确认密码",
         "register_submit": "注册",
@@ -618,6 +694,26 @@ Let AI be your Chief Product Development Engineer.
         "login_btn": "LOG IN",
         "register_btn": "REGISTER",
         "forgot_password": "Forgot Password?",
+        "forgot_password_hint_email": "Enter your registered email. We will send a password reset link (valid for 1 hour).",
+        "forgot_password_hint_smtp_missing": "Email is not configured. Contact admin, or set SMTP_PASSWORD in Secrets.",
+        "forgot_password_email": "Registered email",
+        "forgot_password_confirm": "I confirm I want to reset the password for this email",
+        "forgot_password_submit_email": "Send reset email",
+        "forgot_password_need_email": "Please enter a valid email",
+        "forgot_password_need_confirm": "Please check the confirmation box",
+        "forgot_password_fail": "Failed to send. Please retry later or contact admin",
+        "forgot_password_cooldown": "Too many requests. Please wait about 2 minutes",
+        "forgot_password_no_base_url": "APP_BASE_URL is missing; cannot build reset link",
+        "forgot_password_email_sent": "If this email is registered, a reset link has been sent. Check inbox and spam.",
+        "reset_password_heading": "Set a new password",
+        "reset_password_caption": "Setting a new password for {email}",
+        "reset_password_submit": "Reset password",
+        "reset_password_ok": "Password updated",
+        "reset_password_ok_hint": "Return to login and sign in with your new password",
+        "reset_password_expired": "Reset link expired. Please request a new one",
+        "reset_password_fail": "Reset failed. Link is invalid or already used",
+        "password_too_short": "Password must be at least 6 characters",
+        "password_mismatch": "Passwords do not match",
         "register_title": "Register New Account",
         "confirm_password": "Confirm Password",
         "register_submit": "Register",
@@ -1667,12 +1763,135 @@ def render_reset_password_form():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(f"<h2 style='text-align: center;'>{t()['forgot_password']}</h2>", unsafe_allow_html=True)
+        smtp_ok = smtp_configured(host=SMTP_HOST, user=SMTP_USER, password=SMTP_PASSWORD)
         with st.container(border=True):
-            st.info("请联系管理员重置密码")
+            st.caption(
+                t()["forgot_password_hint_email"]
+                if smtp_ok
+                else t()["forgot_password_hint_smtp_missing"]
+            )
+            with st.form("forgot_password_form", clear_on_submit=False):
+                forgot_email = st.text_input(
+                    t()["forgot_password_email"],
+                    key="forgot_password_email",
+                )
+                forgot_confirm = st.checkbox(
+                    t()["forgot_password_confirm"],
+                    key="forgot_password_confirm",
+                )
+                submitted = st.form_submit_button(
+                    t()["forgot_password_submit_email"],
+                    type="primary",
+                    use_container_width=True,
+                    disabled=not smtp_ok,
+                )
+            if submitted:
+                em = (forgot_email or "").strip().lower()
+                if not em or "@" not in em:
+                    st.warning(t()["forgot_password_need_email"])
+                elif not forgot_confirm:
+                    st.warning(t()["forgot_password_need_confirm"])
+                elif not smtp_ok:
+                    st.error(t()["forgot_password_hint_smtp_missing"])
+                elif not JWT_SECRET_KEY:
+                    st.error(t()["forgot_password_fail"] + " (missing JWT_SECRET_KEY)")
+                else:
+                    status, detail = send_password_reset_email(
+                        email=em,
+                        lang=st.session_state.lang,
+                        jwt_secret=JWT_SECRET_KEY,
+                        supabase_url=SUPABASE_URL,
+                        service_headers=SERVICE_HEADERS,
+                        smtp=_smtp_settings(),
+                        app_base_url=_resolve_app_base_url(),
+                        last_sent_map=_pwd_reset_cooldown_map(),
+                        app_name="TechLife Suite",
+                    )
+                    if status == "ok":
+                        st.success(t()["forgot_password_email_sent"])
+                    elif status == "cooldown":
+                        st.warning(t()["forgot_password_cooldown"])
+                    elif status == "smtp_missing":
+                        st.error(t()["forgot_password_hint_smtp_missing"])
+                    elif status == "no_base_url":
+                        st.error(t()["forgot_password_no_base_url"])
+                    else:
+                        msg = t()["forgot_password_fail"]
+                        if detail:
+                            msg = f"{msg} ({detail})"
+                        st.error(msg)
             st.markdown(f"📧 {t()['contact_email']}")
         if st.button(t()["back_to_login"], use_container_width=True):
             st.session_state.reset_password = False
             st.rerun()
+
+
+def render_password_reset_panel() -> bool:
+    """
+    处理邮件重置链接 ?pwd_reset=1&email=&token=
+    返回 True 表示已展示重置面板（调用方应跳过其他未登录页）。
+    """
+    try:
+        qp = st.query_params
+        flag = qp.get("pwd_reset")
+        email = (qp.get("email") or "").strip().lower()
+        token = (qp.get("token") or "").strip()
+    except Exception:
+        return False
+    if flag not in ("1", "true", "yes") or not email or not token:
+        return False
+
+    st.markdown(f"### {t()['reset_password_heading']}")
+    st.caption(t()["reset_password_caption"].format(email=email))
+    with st.form("pwd_reset_form", clear_on_submit=False):
+        p1 = st.text_input(t()["password_placeholder"], type="password", key="pwd_reset_p1")
+        p2 = st.text_input(t()["confirm_password"], type="password", key="pwd_reset_p2")
+        go = st.form_submit_button(
+            t()["reset_password_submit"], type="primary", use_container_width=True
+        )
+    if go:
+        if not p1 or len(p1) < 6:
+            st.warning(t()["password_too_short"])
+        elif p1 != p2:
+            st.warning(t()["password_mismatch"])
+        elif not JWT_SECRET_KEY:
+            st.error(t()["forgot_password_fail"])
+        else:
+            ok, err = apply_password_reset_with_token(
+                email=email,
+                token=token,
+                new_password=p1,
+                jwt_secret=JWT_SECRET_KEY,
+                supabase_url=SUPABASE_URL,
+                service_headers=SERVICE_HEADERS,
+            )
+            if ok:
+                st.success(t()["reset_password_ok"])
+                st.info(t()["reset_password_ok_hint"])
+                try:
+                    for k in ("pwd_reset", "email", "token"):
+                        if k in st.query_params:
+                            del st.query_params[k]
+                except Exception:
+                    pass
+                st.session_state.reset_password = False
+                st.session_state.show_register = False
+            elif err == "token_expired":
+                st.error(t()["reset_password_expired"])
+            else:
+                st.error(t()["reset_password_fail"])
+    if st.button(t()["login_btn"], key="pwd_reset_to_login"):
+        try:
+            for k in ("pwd_reset", "email", "token"):
+                if k in st.query_params:
+                    del st.query_params[k]
+        except Exception:
+            pass
+        st.session_state.reset_password = False
+        st.session_state.show_register = False
+        st.rerun()
+    return True
+
 
 def render_subscription_section(profile, tier, remaining, total_usage):
     col_card1, col_card2, col_card3, col_card4, col_upgrade = st.columns([1, 1, 1, 1, 1.2])
@@ -2763,19 +2982,33 @@ def render_admin_user_section(users, auth_users):
                     st.rerun()
             with col_b3:
                 if st.button("📧 发送密码重置邮件", use_container_width=True, key="admin_reset_pwd"):
-                    try:
-                        reset_data = {"email": selected_email}
-                        reset_response = requests.post(
-                            f"{SUPABASE_URL}/auth/v1/recover",
-                            headers=AUTH_HEADERS,
-                            json=reset_data,
+                    if not smtp_configured(host=SMTP_HOST, user=SMTP_USER, password=SMTP_PASSWORD):
+                        st.error(t()["forgot_password_hint_smtp_missing"])
+                    elif not JWT_SECRET_KEY:
+                        st.error(t()["forgot_password_fail"] + " (missing JWT_SECRET_KEY)")
+                    else:
+                        status, detail = send_password_reset_email(
+                            email=selected_email,
+                            lang=st.session_state.lang,
+                            jwt_secret=JWT_SECRET_KEY,
+                            supabase_url=SUPABASE_URL,
+                            service_headers=SERVICE_HEADERS,
+                            smtp=_smtp_settings(),
+                            app_base_url=_resolve_app_base_url(),
+                            last_sent_map=_pwd_reset_cooldown_map(),
+                            app_name="TechLife Suite",
                         )
-                        if reset_response.status_code == 200:
-                            st.success(f"✅ 密码重置邮件已发送至 {selected_email}")
+                        if status == "ok":
+                            st.success(f"✅ {t()['forgot_password_email_sent']}")
+                        elif status == "cooldown":
+                            st.warning(t()["forgot_password_cooldown"])
+                        elif status == "no_base_url":
+                            st.error(t()["forgot_password_no_base_url"])
                         else:
-                            st.error(f"发送失败: {reset_response.text}")
-                    except Exception as e:
-                        st.error(f"发送失败: {e}")
+                            msg = t()["forgot_password_fail"]
+                            if detail:
+                                msg = f"{msg} ({detail})"
+                            st.error(msg)
 
     st.markdown("---")
     if st.button(t()["reset_all_trials"], use_container_width=True, key="admin_reset_all"):
@@ -2895,6 +3128,9 @@ def main():
             st.session_state.org_admin_mode = False
         if st.session_state.pop("_password_changed_flash", False):
             st.success(t()["password_changed"])
+        # 邮件重置链接优先处理（未登录也可打开）
+        if not st.session_state.get("authenticated") and render_password_reset_panel():
+            return
         render_sidebar()
         render_top_buttons()
         if st.session_state.get("show_admin_login", False):
