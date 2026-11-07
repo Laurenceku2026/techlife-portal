@@ -133,7 +133,7 @@ JWT_SECRET_KEY = _get_secret("JWT_SECRET_KEY")
 
 APP_URLS = {
     "innovation": (_get_secret("INNOVATION_APP_URL") or "").strip()
-    or "https://innovation-analysis-saas.streamlit.app",
+    or "https://innovation-analysis.streamlit.app",
     "feasibility": "https://appuct-feasibility-analysis.streamlit.app",
     "dqa": "https://ai-design-dfmea.streamlit.app",
     "fa": "https://ai-fa-8d.streamlit.app",
