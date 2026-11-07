@@ -5,9 +5,25 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Sequence
 
-PORTAL_APP_KEYS: Sequence[str] = ("feasibility", "dqa", "fa", "paravary", "eml")
+PORTAL_APP_KEYS: Sequence[str] = (
+    "innovation",
+    "feasibility",
+    "dqa",
+    "fa",
+    "paravary",
+    "eml",
+)
+
+# Organizations that still store the pre-innovation default get the new app automatically.
+_LEGACY_FULL_DEFAULT = frozenset({"feasibility", "dqa", "fa", "paravary", "eml"})
 
 APP_CATALOG: Dict[str, Dict[str, str]] = {
+    "innovation": {
+        "name": "🧠 Innovation Analysis",
+        "name_zh": "🧠 创新分析",
+        "desc_zh": "痛点·价值·技术三支柱（含专利/竞品）",
+        "desc_en": "Desirability, viability, feasibility (VOC, patents, competitors)",
+    },
     "feasibility": {
         "name": "📊 Product Feasibility",
         "desc_zh": "产品可行性分析 - 挖掘市场与用户之声",
@@ -50,8 +66,14 @@ def normalize_enabled_apps(value: Any) -> List[str]:
         except json.JSONDecodeError:
             return default_enabled_apps()
     if isinstance(parsed, list):
-        filtered = [key for key in parsed if key in PORTAL_APP_KEYS]
-        return filtered if filtered else default_enabled_apps()
+        filtered = [key for key in PORTAL_APP_KEYS if key in parsed]
+        if not filtered:
+            return default_enabled_apps()
+        if set(filtered) == _LEGACY_FULL_DEFAULT:
+            return default_enabled_apps()
+        if "feasibility" in filtered and "innovation" not in filtered:
+            return [key for key in PORTAL_APP_KEYS if key == "innovation" or key in filtered]
+        return filtered
     return default_enabled_apps()
 
 
@@ -63,7 +85,9 @@ def org_enabled_apps(org: Dict[str, Any] | None) -> List[str]:
 
 def app_display_name(app_key: str, *, lang: str = "zh") -> str:
     entry = APP_CATALOG.get(app_key, {})
-    return entry.get("name", app_key)
+    if lang == "zh":
+        return entry.get("name_zh") or entry.get("name", app_key)
+    return entry.get("name_en") or entry.get("name", app_key)
 
 
 def app_description(app_key: str, *, lang: str = "zh") -> str:

@@ -5,8 +5,8 @@ ALTER TABLE organizations
     ADD COLUMN IF NOT EXISTS enabled_apps JSONB;
 
 UPDATE organizations
-SET enabled_apps = '["feasibility","dqa","fa","paravary","eml"]'::jsonb
+SET enabled_apps = '["innovation","feasibility","dqa","fa","paravary","eml"]'::jsonb
 WHERE enabled_apps IS NULL;
 
 ALTER TABLE organizations
-    ALTER COLUMN enabled_apps SET DEFAULT '["feasibility","dqa","fa","paravary","eml"]'::jsonb;
+    ALTER COLUMN enabled_apps SET DEFAULT '["innovation","feasibility","dqa","fa","paravary","eml"]'::jsonb;

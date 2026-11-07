@@ -87,13 +87,14 @@ ADMIN_USERNAME = _get_secret("ADMIN_USERNAME")
 ADMIN_PASSWORD = _get_secret("ADMIN_PASSWORD")
 ADMIN_EMAIL = _get_secret("ADMIN_EMAIL")
 
-# 五个 APP 的 URL（新增 AI-FA）
+# 子应用 URL。innovation 在门户内打开，不跳转外部 Streamlit 应用。
+INTERNAL_APPS = {"innovation"}
 APP_URLS = {
     "feasibility": "https://appuct-feasibility-analysis.streamlit.app",
     "dqa": "https://ai-design-dfmea.streamlit.app",
-    "fa": "https://ai-fa-8d.streamlit.app",                    # 新增 AI-FA
+    "fa": "https://ai-fa-8d.streamlit.app",
     "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app",
-    "eml": "https://healthy-light-calculator.streamlit.app"
+    "eml": "https://healthy-light-calculator.streamlit.app",
 }
 
 # ==================== Stripe 配置 ====================
@@ -463,6 +464,7 @@ TEXTS = {
 
 我们致力于用人工智能简化复杂的产品开发流程，覆盖从市场输入、设计预防到失效根治的完整闭环：
 
+- **创新分析**：验证痛点真伪，量化有多痛及证据来源。
 - **产品可行性分析**：挖掘市场趋势与用户之声 (VOC)。
 - **AI-DQA 设计质量保证**：事前识别设计风险，AI 辅助 DFMEA。
 - **Para-Vary 公差仿真**：蒙特卡罗累积公差分析，获得稳健设计。
@@ -540,10 +542,11 @@ TEXTS = {
         "reset_all_trials": "重置所有免费用户次数",
         "batch_ops": "批量操作",
         "launch": "在新窗口打开",
+        "enter_app": "进入",
         "login_failed": "登录失败",
         "register_success": "注册成功！请登录",
         "email_exists": "该邮箱已注册，请直接登录",
-        "open_new_tab": "🔗 点击按钮将在新标签页中打开应用",
+        "open_new_tab": "🔗 创新分析在本页打开；其他应用在新标签页打开",
         "monthly": "月付 $29/月",
         "yearly": "年付 $299/年",
         "expires_at": "到期",
@@ -619,7 +622,7 @@ TEXTS = {
         "org_updated": "企业已更新",
         "user_assigned": "用户已绑定",
         "org_apps_title": "企业应用权限",
-        "org_apps_hint": "选择该企业可使用的子应用。默认全部开启；可仅开通所需应用（例如只开 EML Calculator）。",
+        "org_apps_hint": "选择该企业可使用的子应用。默认全部开启（创新分析排在第一位）；可仅开通所需应用（例如只开 EML Calculator）。",
         "org_apps_select": "已开通应用",
         "org_apps_save": "保存应用权限",
         "org_apps_saved": "应用权限已更新",
@@ -678,6 +681,7 @@ TEXTS = {
 
 We use artificial intelligence to simplify complex product development, covering the full loop from market input and design prevention to failure resolution:
 
+- **Innovation Analysis**: Validate pain points and quantify evidence.
 - **Product Feasibility**: Market trends and Voice of Customer (VOC).
 - **AI-DQA**: Upfront design risk identification with AI-assisted DFMEA.
 - **Para-Vary**: Monte Carlo tolerance stack-up for robust design.
@@ -755,10 +759,11 @@ Let AI be your Chief Product Development Engineer.
         "reset_all_trials": "Reset All Free Users Trials",
         "batch_ops": "Batch Operations",
         "launch": "Open in New Tab",
+        "enter_app": "Enter",
         "login_failed": "Login failed",
         "register_success": "Registration successful! Please login.",
         "email_exists": "Email already registered. Please login.",
-        "open_new_tab": "🔗 Click button to open app in new tab",
+        "open_new_tab": "🔗 Innovation Analysis opens here; other apps open in a new tab",
         "monthly": "Monthly $29/month",
         "yearly": "Yearly $299/year",
         "expires_at": "Expires",
@@ -834,7 +839,7 @@ Let AI be your Chief Product Development Engineer.
         "org_updated": "Organization updated",
         "user_assigned": "User assigned",
         "org_apps_title": "Organization App Access",
-        "org_apps_hint": "Choose which child apps this organization may launch. All apps are enabled by default; restrict to only what they need (e.g. EML Calculator only).",
+        "org_apps_hint": "Choose which child apps this organization may launch. All apps are enabled by default (Innovation Analysis is first); restrict to only what they need (e.g. EML Calculator only).",
         "org_apps_select": "Enabled apps",
         "org_apps_save": "Save app access",
         "org_apps_saved": "App access updated",
@@ -908,6 +913,8 @@ if "org_admin_mode" not in st.session_state:
     st.session_state.org_admin_mode = False
 if "pending_delete_org_id" not in st.session_state:
     st.session_state.pending_delete_org_id = None
+if "portal_view" not in st.session_state:
+    st.session_state.portal_view = None
 
 def t():
     return TEXTS[st.session_state.lang]
@@ -975,6 +982,7 @@ def reset_to_guest_session():
     st.session_state.show_register = False
     st.session_state.reset_password = False
     st.session_state.pending_delete_org_id = None
+    st.session_state.portal_view = None
     _scrub_admin_url_query_params()
     if password_flash:
         st.session_state._password_changed_flash = True
@@ -1002,6 +1010,7 @@ def reset_to_authenticated_main_session():
     st.session_state.show_register = False
     st.session_state.reset_password = False
     st.session_state.pending_delete_org_id = None
+    st.session_state.portal_view = None
     if password_flash:
         st.session_state._password_changed_flash = True
 
@@ -1997,7 +2006,7 @@ def render_app_navigation(profile, tier, remaining):
     for app_key in PORTAL_APP_KEYS:
         if app_key not in enabled_keys:
             continue
-        if app_key not in APP_URLS:
+        if app_key not in INTERNAL_APPS and app_key not in APP_URLS:
             continue
         name = app_display_name(app_key, lang=lang)
         desc = app_description(app_key, lang=lang)
@@ -2008,40 +2017,63 @@ def render_app_navigation(profile, tier, remaining):
             with col_desc:
                 st.caption(desc)
             with col_btn:
-                lang_param = "zh" if lang == "zh" else "en"
-                full_url = build_app_launch_url(
-                    APP_URLS[app_key],
-                    st.session_state.user_id,
-                    st.session_state.user_email,
-                    lang_param,
-                    tier,
-                    remaining,
-                    organization_id=org_id,
-                    organization_name=org_name,
-                    organization_name_zh=profile.get("organization_name_zh"),
-                    organization_name_en=profile.get("organization_name_en"),
-                    organization_name_display_mode=profile.get("organization_name_display_mode") or "auto",
-                    org_role=org_role,
-                )
-                button_html = f'''
-                <a href="{full_url}" target="_blank" style="
-                    display: inline-block;
-                    width: 100%;
-                    padding: 8px 16px;
-                    background-color: #ff4b4b;
-                    color: white;
-                    text-align: center;
-                    text-decoration: none;
-                    border-radius: 8px;
-                    font-weight: 500;
-                    cursor: pointer;
-                ">{t()['launch']}</a>
-                '''
-                st.markdown(button_html, unsafe_allow_html=True)
+                if app_key in INTERNAL_APPS:
+                    if st.button(t()["enter_app"], key=f"launch_{app_key}", type="primary", use_container_width=True):
+                        st.session_state.portal_view = app_key
+                        if profile.get("organization_id"):
+                            st.session_state.organization_id = profile.get("organization_id")
+                        st.session_state.trials_left = profile.get("free_trials_remaining", 30)
+                        st.rerun()
+                else:
+                    lang_param = "zh" if lang == "zh" else "en"
+                    full_url = build_app_launch_url(
+                        APP_URLS[app_key],
+                        st.session_state.user_id,
+                        st.session_state.user_email,
+                        lang_param,
+                        tier,
+                        remaining,
+                        organization_id=org_id,
+                        organization_name=org_name,
+                        organization_name_zh=profile.get("organization_name_zh"),
+                        organization_name_en=profile.get("organization_name_en"),
+                        organization_name_display_mode=profile.get("organization_name_display_mode") or "auto",
+                        org_role=org_role,
+                    )
+                    button_html = f'''
+                    <a href="{full_url}" target="_blank" style="
+                        display: inline-block;
+                        width: 100%;
+                        padding: 8px 16px;
+                        background-color: #ff4b4b;
+                        color: white;
+                        text-align: center;
+                        text-decoration: none;
+                        border-radius: 8px;
+                        font-weight: 500;
+                        cursor: pointer;
+                    ">{t()['launch']}</a>
+                    '''
+                    st.markdown(button_html, unsafe_allow_html=True)
 
 
 def render_main_app():
     handle_stripe_callback()
+
+    if st.session_state.get("portal_view") == "innovation":
+        from innovation_analysis import render_innovation_app
+
+        profile = safe_get_profile(st.session_state.user_id)
+        if profile.get("organization_id"):
+            st.session_state.organization_id = profile.get("organization_id")
+            enabled_keys = normalize_enabled_apps(profile.get("enabled_apps"))
+            if "innovation" not in enabled_keys:
+                st.session_state.portal_view = None
+                st.rerun()
+                return
+        st.session_state.trials_left = profile.get("free_trials_remaining", 30)
+        render_innovation_app(embedded=True)
+        return
 
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
