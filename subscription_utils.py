@@ -95,12 +95,17 @@ def authenticate_from_portal() -> Optional[Dict[str, Any]]:
         payload = verify_portal_token(token)
         if payload:
             profile = get_user_profile(payload["sub"])
+            org_id = profile.get("organization_id") or payload.get("organization_id")
+            tier = profile.get("subscription_tier", payload.get("tier", "free"))
+            if org_id:
+                tier = "enterprise"
             return {
                 "user_id": payload["sub"],
                 "email": payload.get("email") or profile.get("email", ""),
                 "lang": payload.get("lang", query_params.get("lang", "zh")),
-                "subscription_tier": profile.get("subscription_tier", payload.get("tier", "free")),
+                "subscription_tier": tier,
                 "trials_left": profile.get("free_trials_remaining", payload.get("trials_left", 0)),
+                "organization_id": org_id,
             }
         st.error("登录凭证无效或已过期，请返回门户重新登录。")
         st.stop()
@@ -112,12 +117,17 @@ def authenticate_from_portal() -> Optional[Dict[str, Any]]:
         if profile.get("email") and profile.get("email") != email:
             st.error("登录信息不匹配，请返回门户重新登录。")
             st.stop()
+        org_id = profile.get("organization_id")
+        tier = profile.get("subscription_tier", "free")
+        if org_id:
+            tier = "enterprise"
         return {
             "user_id": user_id,
             "email": email,
             "lang": query_params.get("lang", "zh"),
-            "subscription_tier": profile.get("subscription_tier", "free"),
+            "subscription_tier": tier,
             "trials_left": profile.get("free_trials_remaining", 0),
+            "organization_id": org_id,
         }
 
     return None
@@ -133,6 +143,8 @@ def require_portal_user() -> Dict[str, Any]:
 
 def can_use_tool(user: Dict[str, Any]) -> bool:
     """检查用户是否有权限使用工具（以 profiles 表为准）"""
+    if user.get("organization_id"):
+        return True
     tier = user.get("subscription_tier")
     if tier in ("pro", "enterprise"):
         return True
@@ -149,7 +161,7 @@ def decrement_trial(user_id: str) -> bool:
         return False
 
     profile = get_user_profile(user_id)
-    if profile.get("subscription_tier") in ("pro", "enterprise"):
+    if profile.get("organization_id") or profile.get("subscription_tier") in ("pro", "enterprise"):
         return True
 
     remaining = profile.get("free_trials_remaining", 0)

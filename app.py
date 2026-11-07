@@ -9,6 +9,7 @@ from portal_apps import (
     PORTAL_APP_KEYS,
     app_description,
     app_display_name,
+    app_icon_html,
     normalize_enabled_apps,
     org_enabled_apps,
 )
@@ -87,15 +88,7 @@ ADMIN_USERNAME = _get_secret("ADMIN_USERNAME")
 ADMIN_PASSWORD = _get_secret("ADMIN_PASSWORD")
 ADMIN_EMAIL = _get_secret("ADMIN_EMAIL")
 
-# 子应用 URL。innovation 在门户内打开，不跳转外部 Streamlit 应用。
-INTERNAL_APPS = {"innovation"}
-APP_URLS = {
-    "feasibility": "https://appuct-feasibility-analysis.streamlit.app",
-    "dqa": "https://ai-design-dfmea.streamlit.app",
-    "fa": "https://ai-fa-8d.streamlit.app",
-    "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app",
-    "eml": "https://healthy-light-calculator.streamlit.app",
-}
+# Child apps open in a new tab. Each is a separate GitHub repo + Streamlit Cloud app.
 
 # ==================== Stripe 配置 ====================
 _stripe_key = _get_secret("STRIPE_SECRET_KEY")
@@ -137,6 +130,16 @@ APP_BASE_URL = (
     or "https://techlife-app.streamlit.app"
 )
 JWT_SECRET_KEY = _get_secret("JWT_SECRET_KEY")
+
+APP_URLS = {
+    "innovation": (_get_secret("INNOVATION_APP_URL") or "").strip()
+    or "https://innovation-analysis-saas.streamlit.app",
+    "feasibility": "https://appuct-feasibility-analysis.streamlit.app",
+    "dqa": "https://ai-design-dfmea.streamlit.app",
+    "fa": "https://ai-fa-8d.streamlit.app",
+    "paravary": "https://dfss-stack-tolerance-analysis.streamlit.app",
+    "eml": "https://healthy-light-calculator.streamlit.app",
+}
 
 
 def _resolve_app_base_url() -> str:
@@ -546,7 +549,7 @@ TEXTS = {
         "login_failed": "登录失败",
         "register_success": "注册成功！请登录",
         "email_exists": "该邮箱已注册，请直接登录",
-        "open_new_tab": "🔗 创新分析在本页打开；其他应用在新标签页打开",
+        "open_new_tab": "🔗 点击进入后在新窗口打开",
         "monthly": "月付 $29/月",
         "yearly": "年付 $299/年",
         "expires_at": "到期",
@@ -763,7 +766,7 @@ Let AI be your Chief Product Development Engineer.
         "login_failed": "Login failed",
         "register_success": "Registration successful! Please login.",
         "email_exists": "Email already registered. Please login.",
-        "open_new_tab": "🔗 Innovation Analysis opens here; other apps open in a new tab",
+        "open_new_tab": "🔗 Enter opens the app in a new window",
         "monthly": "Monthly $29/month",
         "yearly": "Yearly $299/year",
         "expires_at": "Expires",
@@ -2006,42 +2009,41 @@ def render_app_navigation(profile, tier, remaining):
     for app_key in PORTAL_APP_KEYS:
         if app_key not in enabled_keys:
             continue
-        if app_key not in INTERNAL_APPS and app_key not in APP_URLS:
+        if app_key not in APP_URLS:
             continue
         name = app_display_name(app_key, lang=lang)
         desc = app_description(app_key, lang=lang)
+        icon_html = app_icon_html(app_key)
         with st.container(border=True):
             col_name, col_desc, col_btn = st.columns([2, 3, 1])
             with col_name:
-                st.markdown(f"**{name}**")
+                if icon_html:
+                    st.markdown(
+                        f'<div style="font-weight:600;line-height:1.4;">{icon_html}{name}</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(f"**{name}**")
             with col_desc:
                 st.caption(desc)
             with col_btn:
-                if app_key in INTERNAL_APPS:
-                    if st.button(t()["enter_app"], key=f"launch_{app_key}", type="primary", use_container_width=True):
-                        st.session_state.portal_view = app_key
-                        if profile.get("organization_id"):
-                            st.session_state.organization_id = profile.get("organization_id")
-                        st.session_state.trials_left = profile.get("free_trials_remaining", 30)
-                        st.rerun()
-                else:
-                    lang_param = "zh" if lang == "zh" else "en"
-                    full_url = build_app_launch_url(
-                        APP_URLS[app_key],
-                        st.session_state.user_id,
-                        st.session_state.user_email,
-                        lang_param,
-                        tier,
-                        remaining,
-                        organization_id=org_id,
-                        organization_name=org_name,
-                        organization_name_zh=profile.get("organization_name_zh"),
-                        organization_name_en=profile.get("organization_name_en"),
-                        organization_name_display_mode=profile.get("organization_name_display_mode") or "auto",
-                        org_role=org_role,
-                    )
-                    button_html = f'''
-                    <a href="{full_url}" target="_blank" style="
+                lang_param = "zh" if lang == "zh" else "en"
+                full_url = build_app_launch_url(
+                    APP_URLS[app_key],
+                    st.session_state.user_id,
+                    st.session_state.user_email,
+                    lang_param,
+                    tier,
+                    remaining,
+                    organization_id=org_id,
+                    organization_name=org_name,
+                    organization_name_zh=profile.get("organization_name_zh"),
+                    organization_name_en=profile.get("organization_name_en"),
+                    organization_name_display_mode=profile.get("organization_name_display_mode") or "auto",
+                    org_role=org_role,
+                )
+                button_html = f'''
+                    <a href="{full_url}" target="_blank" rel="noopener noreferrer" style="
                         display: inline-block;
                         width: 100%;
                         padding: 8px 16px;
@@ -2052,28 +2054,13 @@ def render_app_navigation(profile, tier, remaining):
                         border-radius: 8px;
                         font-weight: 500;
                         cursor: pointer;
-                    ">{t()['launch']}</a>
+                    ">{t()['enter_app']}</a>
                     '''
-                    st.markdown(button_html, unsafe_allow_html=True)
+                st.markdown(button_html, unsafe_allow_html=True)
 
 
 def render_main_app():
     handle_stripe_callback()
-
-    if st.session_state.get("portal_view") == "innovation":
-        from innovation_analysis import render_innovation_app
-
-        profile = safe_get_profile(st.session_state.user_id)
-        if profile.get("organization_id"):
-            st.session_state.organization_id = profile.get("organization_id")
-            enabled_keys = normalize_enabled_apps(profile.get("enabled_apps"))
-            if "innovation" not in enabled_keys:
-                st.session_state.portal_view = None
-                st.rerun()
-                return
-        st.session_state.trials_left = profile.get("free_trials_remaining", 30)
-        render_innovation_app(embedded=True)
-        return
 
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:

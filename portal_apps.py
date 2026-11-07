@@ -19,10 +19,11 @@ _LEGACY_FULL_DEFAULT = frozenset({"feasibility", "dqa", "fa", "paravary", "eml"}
 
 APP_CATALOG: Dict[str, Dict[str, str]] = {
     "innovation": {
-        "name": "🧠 Innovation Analysis",
-        "name_zh": "🧠 创新分析",
+        "name": "Innovation Analysis",
+        "name_zh": "创新分析",
         "desc_zh": "痛点·价值·技术三支柱（含专利/竞品）",
         "desc_en": "Desirability, viability, feasibility (VOC, patents, competitors)",
+        "icon_color": "#8EC8E8",
     },
     "feasibility": {
         "name": "📊 Product Feasibility",
@@ -88,6 +89,16 @@ def app_display_name(app_key: str, *, lang: str = "zh") -> str:
     if lang == "zh":
         return entry.get("name_zh") or entry.get("name", app_key)
     return entry.get("name_en") or entry.get("name", app_key)
+
+
+def app_icon_html(app_key: str) -> str:
+    color = (APP_CATALOG.get(app_key) or {}).get("icon_color")
+    if not color:
+        return ""
+    return (
+        f'<span style="display:inline-block;width:18px;height:18px;border-radius:5px;'
+        f'background:{color};margin-right:8px;vertical-align:middle;"></span>'
+    )
 
 
 def app_description(app_key: str, *, lang: str = "zh") -> str:
