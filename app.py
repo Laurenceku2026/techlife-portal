@@ -514,6 +514,7 @@ TEXTS = {
         "subscription": "订阅",
         "total_usage": "总使用次数",
         "nav_title": "应用导航",
+        "nav_app_innovation": "创新评估",
         "admin_panel": "管理员面板",
         "chinese": "中文",
         "english": "English",
@@ -731,6 +732,7 @@ Let AI be your Chief Product Development Engineer.
         "subscription": "Subscription",
         "total_usage": "Total Usage",
         "nav_title": "App Navigation",
+        "nav_app_innovation": "Innovation Assessment",
         "admin_panel": "Admin Panel",
         "chinese": "中文",
         "english": "English",
@@ -2011,7 +2013,7 @@ def render_app_navigation(profile, tier, remaining):
             continue
         if app_key not in APP_URLS:
             continue
-        name = app_display_name(app_key, lang=lang)
+        name = t().get(f"nav_app_{app_key}") or app_display_name(app_key, lang=lang)
         desc = app_description(app_key, lang=lang)
         icon_html = app_icon_html(app_key)
         with st.container(border=True):
@@ -2661,7 +2663,7 @@ def render_platform_enterprise_section(users):
         selected_apps = st.multiselect(
             t()["org_apps_select"],
             options=list(PORTAL_APP_KEYS),
-            format_func=lambda key: app_display_name(key, lang=st.session_state.lang),
+            format_func=lambda key: t().get(f"nav_app_{key}") or app_display_name(key, lang=st.session_state.lang),
             key="platform_org_enabled_apps",
         )
         if st.button(t()["org_apps_save"], key="platform_org_apps_save_btn", use_container_width=True, type="primary"):
