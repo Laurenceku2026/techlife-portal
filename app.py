@@ -467,7 +467,7 @@ TEXTS = {
 
 我们致力于用人工智能简化复杂的产品开发流程，覆盖从市场输入、设计预防到失效根治的完整闭环：
 
-- **创新评估**：验证痛点真伪，量化有多痛及证据来源。
+- **创新评估 / Innovation Assessment**：验证痛点真伪，量化有多痛及证据来源。
 - **产品可行性分析**：挖掘市场趋势与用户之声 (VOC)。
 - **AI-DQA 设计质量保证**：事前识别设计风险，AI 辅助 DFMEA。
 - **Para-Vary 公差仿真**：蒙特卡罗累积公差分析，获得稳健设计。
@@ -684,7 +684,7 @@ TEXTS = {
 
 We use artificial intelligence to simplify complex product development, covering the full loop from market input and design prevention to failure resolution:
 
-- **Innovation Assessment**: Validate pain points and quantify evidence.
+- **Innovation Assessment / 创新评估**: Validate pain points and quantify evidence.
 - **Product Feasibility**: Market trends and Voice of Customer (VOC).
 - **AI-DQA**: Upfront design risk identification with AI-assisted DFMEA.
 - **Para-Vary**: Monte Carlo tolerance stack-up for robust design.

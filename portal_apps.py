@@ -20,7 +20,8 @@ _LEGACY_FULL_DEFAULT = frozenset({"feasibility", "dqa", "fa", "paravary", "eml"}
 APP_CATALOG: Dict[str, Dict[str, str]] = {
     "innovation": {
         "name": "Innovation Assessment",
-        "name_zh": "创新评估",
+        "name_zh": "创新评估 / Innovation Assessment",
+        "name_en": "Innovation Assessment / 创新评估",
         "desc_zh": "痛点·价值·技术三支柱（含专利/竞品）",
         "desc_en": "Desirability, viability, feasibility (VOC, patents, competitors)",
         "icon_color": "#8EC8E8",
