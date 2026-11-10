@@ -467,7 +467,7 @@ TEXTS = {
 
 我们致力于用人工智能简化复杂的产品开发流程，覆盖从市场输入、设计预防到失效根治的完整闭环：
 
-- **创新分析**：验证痛点真伪，量化有多痛及证据来源。
+- **创新评估**：验证痛点真伪，量化有多痛及证据来源。
 - **产品可行性分析**：挖掘市场趋势与用户之声 (VOC)。
 - **AI-DQA 设计质量保证**：事前识别设计风险，AI 辅助 DFMEA。
 - **Para-Vary 公差仿真**：蒙特卡罗累积公差分析，获得稳健设计。
@@ -625,7 +625,7 @@ TEXTS = {
         "org_updated": "企业已更新",
         "user_assigned": "用户已绑定",
         "org_apps_title": "企业应用权限",
-        "org_apps_hint": "选择该企业可使用的子应用。默认全部开启（创新分析排在第一位）；可仅开通所需应用（例如只开 EML Calculator）。",
+        "org_apps_hint": "选择该企业可使用的子应用。默认全部开启（创新评估排在第一位）；可仅开通所需应用（例如只开 EML Calculator）。",
         "org_apps_select": "已开通应用",
         "org_apps_save": "保存应用权限",
         "org_apps_saved": "应用权限已更新",
@@ -684,7 +684,7 @@ TEXTS = {
 
 We use artificial intelligence to simplify complex product development, covering the full loop from market input and design prevention to failure resolution:
 
-- **Innovation Analysis**: Validate pain points and quantify evidence.
+- **Innovation Assessment**: Validate pain points and quantify evidence.
 - **Product Feasibility**: Market trends and Voice of Customer (VOC).
 - **AI-DQA**: Upfront design risk identification with AI-assisted DFMEA.
 - **Para-Vary**: Monte Carlo tolerance stack-up for robust design.
@@ -842,7 +842,7 @@ Let AI be your Chief Product Development Engineer.
         "org_updated": "Organization updated",
         "user_assigned": "User assigned",
         "org_apps_title": "Organization App Access",
-        "org_apps_hint": "Choose which child apps this organization may launch. All apps are enabled by default (Innovation Analysis is first); restrict to only what they need (e.g. EML Calculator only).",
+        "org_apps_hint": "Choose which child apps this organization may launch. All apps are enabled by default (Innovation Assessment is first); restrict to only what they need (e.g. EML Calculator only).",
         "org_apps_select": "Enabled apps",
         "org_apps_save": "Save app access",
         "org_apps_saved": "App access updated",
